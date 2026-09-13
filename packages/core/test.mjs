@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
 import { walk, sample } from './walker.js'
+import { layout } from './layout.js'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -84,4 +85,37 @@ test('sample: keeps first and last, evenly spaced', () => {
   const a = [...Array(10).keys()]
   assert.deepEqual(sample(a, 4), [0, 3, 6, 9])
   assert.equal(sample(a, 20), a)
+})
+
+function layoutPaths() {
+  const paths = []
+  for (let a = 0; a < 5; a++)
+    for (let b = 0; b < a + 2; b++)
+      for (let f = 0; f < ((a * 7 + b * 3) % 11) + 1; f++) paths.push(`d${a}/s${b}/f${f}.js`)
+  paths.push('README.md', 'docs', 'docs/guide.md') // 'docs' was a file once and a folder later
+  return paths
+}
+
+test('layout: one lot per path, independent of input order', () => {
+  const paths = layoutPaths()
+  const a = layout(paths)
+  assert.equal(a.lots.size, paths.length)
+  assert.deepEqual(layout([...paths].reverse()), a)
+})
+
+test('layout: lots stay inside the root and never overlap', () => {
+  const { size, lots } = layout(layoutPaths())
+  const eps = 1e-6
+  const rects = [...lots.values()]
+  for (const [x, z, w, d] of rects) {
+    assert.ok(w > 0 && d > 0)
+    assert.ok(x >= -eps && z >= -eps && x + w <= size + eps && z + d <= size + eps)
+  }
+  for (let i = 0; i < rects.length; i++)
+    for (let j = i + 1; j < rects.length; j++) {
+      const [ax, az, aw, ad] = rects[i], [bx, bz, bw, bd] = rects[j]
+      const ox = Math.min(ax + aw, bx + bw) - Math.max(ax, bx)
+      const oz = Math.min(az + ad, bz + bd) - Math.max(az, bz)
+      assert.ok(ox <= eps || oz <= eps, `lots ${i} and ${j} overlap`)
+    }
 })
