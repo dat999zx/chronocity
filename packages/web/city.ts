@@ -5,11 +5,13 @@ import { langOf } from '@chronocity/core/lang.ts'
 import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { Model, Sample } from '@chronocity/core/model.ts'
 import { createSky } from './sky.ts'
+import { createBuildingMaterial } from './buildingMaterial.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
 export const DATA_MAX_H = 2.5 // data files (json, csv, ...) stay low: warehouses, not towers
 export const RISE = 0.6       // playback seconds for a height change to ease in
+export const GLOW = 1.5       // playback seconds a touched file's windows stay lit
 const MUTE = 0.25             // how far language colors are pulled toward grey (tuning knob)
 const GREY = new THREE.Color(0xb8bcc4)
 const GROUND = new THREE.Color(0x1c2028) // root plate: asphalt
@@ -57,7 +59,11 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     const g = 0.15 * Math.min(w, d) // building footprint = lot inset by 15%
     return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g, maxH: langOf(path).data ? DATA_MAX_H : MAX_H }
   })
-  const mesh = new THREE.InstancedMesh(box.clone(), new THREE.MeshStandardMaterial({ roughness: 0.85 }), files.length)
+  const night = { value: 0 }
+  const glow = new THREE.InstancedBufferAttribute(new Float32Array(files.length), 1).setUsage(THREE.DynamicDrawUsage)
+  const geo = box.clone()
+  geo.setAttribute('aGlow', glow)
+  const mesh = new THREE.InstancedMesh(geo, createBuildingMaterial(night), files.length)
   files.forEach((f, i) => mesh.setColorAt(i, color.setHex(langOf(f.path).color).lerp(GREY, MUTE)))
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.frustumCulled = false // instances change every frame; a cached bounding sphere would go stale
@@ -82,14 +88,16 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
 
   return {
     render(u) {
-      sky.update(sig.sky(u), sig.fog(u))
+      night.value = sky.update(sig.sky(u), sig.fog(u))
       for (let i = 0; i < files.length; i++) {
-        const f = files[i], h = heightAt(f, sampleAt(tl, f.s, u), u)
+        const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
+        glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
         if (h < 1e-3) m.makeScale(0, 0, 0)
         else m.makeScale(f.w, h, f.d).setPosition(f.x, 0, f.z)
         mesh.setMatrixAt(i, m)
       }
       mesh.instanceMatrix.needsUpdate = true
+      glow.needsUpdate = true
       controls.update()
       renderer.render(scene, camera)
     },
