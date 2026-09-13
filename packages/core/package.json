@@ -2,5 +2,8 @@
   "name": "@chronocity/core",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "isomorphic-git": "^1.42.2"
+  }
 }
