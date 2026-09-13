@@ -1,0 +1,10 @@
+{
+  "name": "@chronocity/bake",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@chronocity/core": "*",
+    "isomorphic-git": "^1.42.2"
+  }
+}
