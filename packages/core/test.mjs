@@ -7,6 +7,7 @@ import path from 'node:path'
 import * as git from 'isomorphic-git'
 import { walk, sample } from './walker.js'
 import { layout } from './layout.js'
+import { timeline, stepAt, sampleAt, GAP_CAP } from './timeline.js'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -118,4 +119,35 @@ test('layout: lots stay inside the root and never overlap', () => {
       const oz = Math.min(az + ad, bz + bd) - Math.max(az, bz)
       assert.ok(ox <= eps || oz <= eps, `lots ${i} and ${j} overlap`)
     }
+})
+
+const tlModel = { commits: [[T, 0, 3], [T + 3600, 0, 3], [T + 60 * 86400, 0, 5]] }
+
+test('timeline: gaps capped at GAP_CAP, scaled to [0, D]', () => {
+  const { u } = timeline(tlModel, 30)
+  assert.equal(u[0], 0)
+  assert.equal(u[2], 30)
+  assert.ok(Math.abs(u[1] - (30 * 3600) / (3600 + GAP_CAP)) < 1e-9)
+})
+
+test('timeline: identical timestamps spread evenly; a single commit sits at 0', () => {
+  assert.deepEqual([...timeline({ commits: [[T, 0, 0], [T, 0, 0], [T, 0, 0]] }, 10).u], [0, 5, 10])
+  assert.deepEqual([...timeline({ commits: [[T, 0, 0]] }, 10).u], [0])
+})
+
+test('timeline: author time going backwards never moves u backwards', () => {
+  const { u } = timeline({ commits: [[T, 0, 0], [T - 500, 0, 0], [T + 1000, 0, 0]] }, 10)
+  assert.ok(u[0] <= u[1] && u[1] <= u[2])
+})
+
+test('stepAt / sampleAt: last entry at or before u', () => {
+  const tl = timeline(tlModel, 30)
+  assert.equal(stepAt(tl, -1), -1)
+  assert.equal(stepAt(tl, 0), 0)
+  assert.equal(stepAt(tl, 29.9), 1)
+  assert.equal(stepAt(tl, 30), 2)
+  const s = [[0, 3], [1, 5], [2, 0]]
+  assert.equal(sampleAt(tl, s, -1), -1)
+  assert.equal(sampleAt(tl, s, 1), 1)
+  assert.equal(sampleAt(tl, [[1, 1]], 0), -1)
 })
