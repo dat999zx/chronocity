@@ -12,15 +12,6 @@
   #scrub { flex: 1 }
   button, select { background: #2a2f38; color: inherit; border: 1px solid #3a404c; border-radius: 6px; padding: 6px 10px; font: inherit }
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
-    "@chronocity/core/": "./core/"
-  }
-}
-</script>
 </head>
 <body>
 <canvas id="city"></canvas>
@@ -34,6 +25,6 @@
     <option value="2">2×</option>
   </select>
 </div>
-<script type="module" src="main.js"></script>
+<script type="module" src="./main.ts"></script>
 </body>
 </html>

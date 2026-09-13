@@ -1,13 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { skipPath, isBinary, countLines } from './skip.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
-import { walk, sample } from './walker.js'
-import { layout } from './layout.js'
-import { timeline, stepAt, sampleAt, GAP_CAP } from './timeline.js'
+import type { Model, Sample } from './model.ts'
+import { skipPath, isBinary, countLines } from './skip.ts'
+import { walk, sample } from './walker.ts'
+import { layout } from './layout.ts'
+import { timeline, stepAt, sampleAt, GAP_CAP } from './timeline.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -18,7 +19,7 @@ test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
 })
 
 test('countLines: newline count, +1 for an unterminated last line', () => {
-  const b = s => new TextEncoder().encode(s)
+  const b = (s: string) => new TextEncoder().encode(s)
   assert.equal(countLines(b('')), 0)
   assert.equal(countLines(b('a')), 1)
   assert.equal(countLines(b('a\n')), 1)
@@ -37,13 +38,13 @@ test('isBinary: NUL byte in the first 8000 bytes', () => {
 const T = 1_700_000_000
 
 // c1: add a.ts (3 lines), a lockfile, a binary · c2: a.ts → 5 lines, add src/b.rs · c3: delete a.ts (60 days later)
-async function fixtureRepo() {
+async function fixtureRepo(): Promise<string> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chronocity-'))
-  const write = (p, data) => {
+  const write = (p: string, data: string | Uint8Array) => {
     fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
     fs.writeFileSync(path.join(dir, p), data)
   }
-  const commit = (message, timestamp) => git.commit({
+  const commit = (message: string, timestamp: number) => git.commit({
     fs, dir, message, author: { name: 't', email: 't@example.com', timestamp, timezoneOffset: -420 },
   })
   await git.init({ fs, dir, defaultBranch: 'main' })
@@ -88,8 +89,8 @@ test('sample: keeps first and last, evenly spaced', () => {
   assert.equal(sample(a, 20), a)
 })
 
-function layoutPaths() {
-  const paths = []
+function layoutPaths(): string[] {
+  const paths: string[] = []
   for (let a = 0; a < 5; a++)
     for (let b = 0; b < a + 2; b++)
       for (let f = 0; f < ((a * 7 + b * 3) % 11) + 1; f++) paths.push(`d${a}/s${b}/f${f}.js`)
@@ -121,7 +122,7 @@ test('layout: lots stay inside the root and never overlap', () => {
     }
 })
 
-const tlModel = { commits: [[T, 0, 3], [T + 3600, 0, 3], [T + 60 * 86400, 0, 5]] }
+const tlModel: Pick<Model, 'commits'> = { commits: [[T, 0, 3], [T + 3600, 0, 3], [T + 60 * 86400, 0, 5]] }
 
 test('timeline: gaps capped at GAP_CAP, scaled to [0, D]', () => {
   const { u } = timeline(tlModel, 30)
@@ -146,7 +147,7 @@ test('stepAt / sampleAt: last entry at or before u', () => {
   assert.equal(stepAt(tl, 0), 0)
   assert.equal(stepAt(tl, 29.9), 1)
   assert.equal(stepAt(tl, 30), 2)
-  const s = [[0, 3], [1, 5], [2, 0]]
+  const s: Sample[] = [[0, 3], [1, 5], [2, 0]]
   assert.equal(sampleAt(tl, s, -1), -1)
   assert.equal(sampleAt(tl, s, 1), 1)
   assert.equal(sampleAt(tl, [[1, 1]], 0), -1)

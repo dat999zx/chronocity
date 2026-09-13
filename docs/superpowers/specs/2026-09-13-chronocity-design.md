@@ -30,39 +30,48 @@ one-click clips.
 
 No non-git mode: a folder without `.git` gets "needs a git repo".
 
-## Repo layout (npm workspaces)
+## Repo layout (npm workspaces, TypeScript)
+
+Switched from plain JS to TypeScript on 2026-09-13 at the user's request.
+Node 24 runs `.ts` files directly (type stripping), so tests and bake need no
+build step; the browser gets Vite. The original "no build step" idea doesn't
+survive TypeScript. Rules:
+- erasable syntax only (no enums, namespaces or parameter properties);
+- imports carry `.ts` extensions;
+- type-only imports use `import type`.
 
 ```
-package.json               private, "workspaces": ["packages/*"]
+package.json               workspaces; scripts: test, typecheck, dev, build, preview, bake
+tsconfig.base.json         shared compiler options; each package extends it
 packages/
-  core/    pure ES modules: no DOM, no Node APIs, no runtime deps
-    walker.js    isomorphic-git instance + fs → Model (git is injected)
-    skip.js      lockfile / minified / vendored / binary rules
-    layout.js    path list → lots (squarified treemap), pure
-    timeline.js  Model → playback times + derived signals (fog, rain, sky)
-    test.mjs     node test: fixture repo → walker/layout/timeline asserts
-  web/     static site, no build step
-    index.html   import map: three, three/addons, mediabunny, @chronocity/core/ → ./core/
-    main.js      UI wiring: gallery, drop, GitHub input, scrubber, HUD
-    city.js      Three.js scene; render(u) is a pure function of playback time
-    colors.js    extension → GitHub language color (muted)
-    sources.js   folder / GitHub → in-memory .git; PROXY_URL constant
-    memfs.js     minimal in-memory fs (only what isomorphic-git calls)
-    git-worker.js  module worker: runs core walker, posts progress + Model
-    export.js    frame-stepped WebCodecs → Mediabunny MP4
-    demos/       baked Model JSON
+  core/    pure TS: no DOM, no Node APIs at runtime, no runtime deps
+    model.ts     the Model types (the contract below)
+    walker.ts    isomorphic-git instance + fs → Model (git is injected)
+    skip.ts      lockfile / minified / vendored / binary rules
+    layout.ts    path list → lots (squarified treemap), pure
+    timeline.ts  Model → playback times + derived signals (fog, rain, sky)
+    test.ts      node:test: fixture repo → walker/layout/timeline asserts
+  web/     Vite app; three and mediabunny come from npm
+    index.html
+    main.ts      UI wiring: gallery, drop, GitHub input, scrubber, HUD
+    city.ts      Three.js scene; render(u) is a pure function of playback time
+    colors.ts    extension → GitHub language color (muted)
+    sources.ts   folder / GitHub → in-memory .git; PROXY_URL constant
+    memfs.ts     minimal in-memory fs (only what isomorphic-git calls)
+    git-worker.ts  module worker: runs core walker, posts progress + Model
+    export.ts    frame-stepped WebCodecs → Mediabunny MP4
+    public/demos/  baked Model JSON
   bake/
-    bake.mjs     node bake.mjs <repoPath> <name> → packages/web/demos/<name>.json
+    bake.ts      node packages/bake/bake.ts <repoPath> <name> → web/public/demos/<name>.json
   proxy/
-    worker.js    Cloudflare Worker CORS proxy, github.com git paths only
+    worker.ts    Cloudflare Worker CORS proxy, github.com git paths only
     wrangler.toml
-scripts/dev.mjs            serves web at / and core at /core/ (same shape as the deploy)
-.github/workflows/pages.yml  assemble _site = web + core/ → GitHub Pages
+.github/workflows/pages.yml  npm ci → test → typecheck → vite build → GitHub Pages
 ```
 
 `core` is the only code shared between browser and Node, which is why it
 takes `git` as a parameter instead of importing it: Node passes the npm
-`isomorphic-git`, the browser worker passes the CDN build.
+`isomorphic-git`, and the browser worker passes the same package bundled by Vite.
 
 ## Model (the contract between walker, bake, and renderer)
 

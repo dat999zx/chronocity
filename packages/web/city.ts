@@ -1,15 +1,20 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { sampleAt } from '@chronocity/core/timeline.js'
+import { sampleAt, type Timeline } from '@chronocity/core/timeline.ts'
+import type { CityLayout } from '@chronocity/core/layout.ts'
+import type { Model, Sample } from '@chronocity/core/model.ts'
 
 export const HEIGHT_K = 0.25 // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24      // tallest possible building (tuning knob)
 export const RISE = 0.6      // playback seconds for a height change to ease in
 
-const easeOut = p => 1 - (1 - p) ** 3
-const heightOf = loc => Math.min(MAX_H, HEIGHT_K * Math.sqrt(loc))
+const easeOut = (p: number) => 1 - (1 - p) ** 3
+const heightOf = (loc: number) => Math.min(MAX_H, HEIGHT_K * Math.sqrt(loc))
 
-export function createCity(canvas, model, lay, tl) {
+interface Building { path: string; s: Sample[]; x: number; z: number; w: number; d: number }
+export interface City { render(u: number): void }
+
+export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLayout, tl: Timeline): City {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   const scene = new THREE.Scene()
@@ -41,8 +46,8 @@ export function createCity(canvas, model, lay, tl) {
   })
   group.add(plates)
 
-  const files = model.files.map(([path, s]) => {
-    const [x, z, w, d] = lay.lots.get(path)
+  const files: Building[] = model.files.map(([path, s]) => {
+    const [x, z, w, d] = lay.lots.get(path)!
     const g = 0.15 * Math.min(w, d) // building footprint = lot inset by 15%
     return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g }
   })
@@ -51,7 +56,7 @@ export function createCity(canvas, model, lay, tl) {
   mesh.frustumCulled = false // instances change every frame; a cached bounding sphere would go stale
   group.add(mesh)
 
-  function heightAt(f, u) {
+  function heightAt(f: Building, u: number): number {
     const k = sampleAt(tl, f.s, u)
     if (k < 0) return 0
     const from = k > 0 ? heightOf(f.s[k - 1][1]) : 0

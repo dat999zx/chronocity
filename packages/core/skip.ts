@@ -6,19 +6,19 @@ const LOCKFILES = new Set([
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'vendor'])
 const GENERATED = /\.min\.(js|css)$|\.map$/
 
-export function skipPath(path) {
+export function skipPath(path: string): boolean {
   const parts = path.split('/')
-  const name = parts.pop()
+  const name = parts.pop()!
   return LOCKFILES.has(name) || GENERATED.test(name) || parts.some(p => SKIP_DIRS.has(p))
 }
 
-export function isBinary(bytes) {
+export function isBinary(bytes: Uint8Array): boolean {
   const end = Math.min(bytes.length, 8000)
   for (let i = 0; i < end; i++) if (bytes[i] === 0) return true
   return false
 }
 
-export function countLines(bytes) {
+export function countLines(bytes: Uint8Array): number {
   let n = 0
   for (let i = 0; i < bytes.length; i++) if (bytes[i] === 10) n++
   return bytes.length && bytes[bytes.length - 1] !== 10 ? n + 1 : n

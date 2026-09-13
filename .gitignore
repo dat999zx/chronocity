@@ -1,5 +1,7 @@
 .knowl/
 .claude/settings.local.json
+.agents/
 node_modules/
+dist/
 .bake/
 .shots/

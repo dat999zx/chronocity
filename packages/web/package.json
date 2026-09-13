@@ -1,5 +1,12 @@
 {
   "name": "@chronocity/web",
   "version": "0.0.0",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "vite": "^8.3.0"
+  }
 }

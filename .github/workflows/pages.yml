@@ -18,15 +18,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble site (same shape as scripts/dev.mjs)
-        run: |
-          mkdir -p _site/core
-          cp -r packages/web/. _site/
-          rm -f _site/package.json
-          cp packages/core/*.js _site/core/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: packages/web/dist
       - id: deployment
         uses: actions/deploy-pages@v4

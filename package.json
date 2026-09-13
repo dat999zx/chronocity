@@ -2,10 +2,19 @@
   "name": "chronocity",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "test": "node --test packages/core/test.mjs",
-    "dev": "node scripts/dev.mjs",
-    "bake": "node packages/bake/bake.mjs"
+    "test": "node --test packages/core/test.ts",
+    "typecheck": "tsc -p packages/core && tsc -p packages/bake && tsc -p packages/web",
+    "dev": "vite packages/web",
+    "build": "vite build packages/web --base ./",
+    "preview": "vite preview packages/web --base ./",
+    "bake": "node packages/bake/bake.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "typescript": "^7.0.2"
   }
 }
