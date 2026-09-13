@@ -8,6 +8,10 @@ import { createSky } from './sky.ts'
 import { createBuildingMaterial } from './buildingMaterial.ts'
 import { createRain } from './rain.ts'
 import { autoCamera, extents } from './camera.ts'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -49,6 +53,13 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
 
   const sig = signals(model, tl)
   const sky = createSky(scene, S)
+
+  // Bloom makes lit windows glow after dark; the threshold keeps daylit surfaces out of it.
+  const composer = new EffectComposer(renderer)
+  composer.addPass(new RenderPass(scene, camera))
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.4, 0.8)
+  composer.addPass(bloom)
+  composer.addPass(new OutputPass())
 
   const group = new THREE.Group()
   group.position.set(-S / 2, 0, -S / 2) // lay out in [0, S], orbit around the centre
@@ -95,6 +106,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
 
   function resize() {
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+    composer.setSize(canvas.clientWidth, canvas.clientHeight)
     camera.aspect = canvas.clientWidth / canvas.clientHeight
     camera.updateProjectionMatrix()
   }
@@ -120,7 +132,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
         camera.position.set(p.x, p.y, p.z)
         camera.lookAt(0, 0, 0)
       }
-      renderer.render(scene, camera)
+      bloom.strength = 0.15 + 0.6 * night.value
+      composer.render()
     },
     pick(clientX, clientY, u) {
       const r = canvas.getBoundingClientRect()
