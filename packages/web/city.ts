@@ -6,6 +6,7 @@ import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { Model, Sample } from '@chronocity/core/model.ts'
 import { createSky } from './sky.ts'
 import { createBuildingMaterial } from './buildingMaterial.ts'
+import { createRain } from './rain.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -68,6 +69,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.frustumCulled = false // instances change every frame; a cached bounding sphere would go stale
   group.add(mesh)
+  const rain = createRain(S)
+  group.add(rain.object)
 
   const heightOf = (f: Building, loc: number) => Math.min(f.maxH, HEIGHT_K * Math.sqrt(loc))
   function heightAt(f: Building, k: number, u: number): number {
@@ -89,6 +92,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   return {
     render(u) {
       night.value = sky.update(sig.sky(u), sig.fog(u))
+      rain.update(u, sig.rain(u))
       for (let i = 0; i < files.length; i++) {
         const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
         glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
