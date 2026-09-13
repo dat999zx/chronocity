@@ -9,6 +9,7 @@ import { skipPath, isBinary, countLines } from './skip.ts'
 import { walk, sample } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, GAP_CAP } from './timeline.ts'
+import { langOf } from './lang.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -152,3 +153,14 @@ test('stepAt / sampleAt: last entry at or before u', () => {
   assert.equal(sampleAt(tl, s, 1), 1)
   assert.equal(sampleAt(tl, [[1, 1]], 0), -1)
 })
+
+test('langOf: language by extension, data files flagged', () => {
+  assert.equal(langOf('src/a.ts').name, 'TypeScript')
+  assert.equal(langOf('web/App.test.TSX').name, 'TypeScript')
+  assert.equal(langOf('lib/x.py').color, 0x3572a5)
+  assert.equal(langOf('docs/evals/suite.JSON').data, true)
+  assert.equal(langOf('src/a.ts').data, false)
+  assert.equal(langOf('.gitignore').name, 'Other')
+  assert.equal(langOf('Makefile').name, 'Other')
+})
+
