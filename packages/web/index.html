@@ -7,7 +7,8 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1f27; color: #e8eaf0; font: 14px system-ui, sans-serif }
   #city { display: block; width: 100vw; height: 100vh }
-  #hud { position: fixed; top: 12px; left: 16px; opacity: .85; pointer-events: none }
+  #hud { position: fixed; top: 12px; left: 16px; opacity: .9; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.7) }
+  #tip { position: fixed; max-width: 420px; padding: 8px 10px; border-radius: 6px; background: rgba(15,18,24,.88); white-space: pre-wrap; pointer-events: none; font-size: 13px }
   #bar { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; gap: 10px; align-items: center }
   #scrub { flex: 1 }
   button, select { background: #2a2f38; color: inherit; border: 1px solid #3a404c; border-radius: 6px; padding: 6px 10px; font: inherit }
@@ -16,6 +17,7 @@
 <body>
 <canvas id="city"></canvas>
 <div id="hud">loading…</div>
+<div id="tip" hidden></div>
 <div id="bar">
   <button id="play" aria-label="Play or pause">▶</button>
   <input id="scrub" type="range" min="0" step="0.01" value="0" aria-label="Timeline">

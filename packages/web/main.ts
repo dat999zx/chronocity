@@ -16,7 +16,10 @@ if (!res.ok) {
 const model: Demo = await res.json()
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
-const city = createCity($<HTMLCanvasElement>('city'), model, lay, tl)
+const canvas = $<HTMLCanvasElement>('city'), tip = $<HTMLDivElement>('tip')
+const city = createCity(canvas, model, lay, tl)
+// A commit's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
+const local = (i: number) => { const [t, tz] = model.commits[i]; return new Date((t + tz * 60) * 1000).toISOString() }
 
 const q = new URLSearchParams(location.search) // ?u=12.5 opens paused at that moment
 let u = q.has('u') ? +q.get('u')! : 0
@@ -37,8 +40,8 @@ function hud() {
     const k = sampleAt(tl, s, u)
     if (k >= 0 && s[k][1] > 0) { files++; loc += s[k][1] }
   }
-  const [t, tz] = model.commits[Math.max(i, 0)]
-  const date = new Date((t + tz * 60) * 1000).toISOString().slice(0, 10) // the author's local date
+  const iso = local(Math.max(i, 0))
+  const date = `${iso.slice(0, 10)} ${iso.slice(11, 16)}` // the author's local date and time
   hudEl.textContent = `${model.repo} · ${date} · commit ${i + 1}/${model.commits.length} · ${files} files · ${loc.toLocaleString()} lines`
 }
 
@@ -55,4 +58,15 @@ function frame(now: number) {
   hud()
   requestAnimationFrame(frame)
 }
+let press = { x: 0, y: 0 }
+canvas.addEventListener('pointerdown', e => { press = { x: e.clientX, y: e.clientY } })
+canvas.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5) return // a drag, not a click
+  const p = city.pick(e.clientX, e.clientY, u)
+  tip.hidden = !p
+  if (!p) return
+  tip.textContent = `${p.path}\n${p.loc.toLocaleString()} lines · since ${local(p.first).slice(0, 10)} · last touched ${local(p.last).slice(0, 10)}`
+  tip.style.left = `${e.clientX + 12}px`
+  tip.style.top = `${e.clientY + 12}px`
+})
 requestAnimationFrame(frame)

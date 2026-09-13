@@ -7,6 +7,7 @@ import type { Model, Sample } from '@chronocity/core/model.ts'
 import { createSky } from './sky.ts'
 import { createBuildingMaterial } from './buildingMaterial.ts'
 import { createRain } from './rain.ts'
+import { autoCamera, extents } from './camera.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -21,7 +22,8 @@ const PLATE = new THREE.Color(0x4a5160)  // folder plates three levels deep; sha
 const easeOut = (p: number) => 1 - (1 - p) ** 3
 
 interface Building { path: string; s: Sample[]; x: number; z: number; w: number; d: number; maxH: number }
-export interface City { render(u: number): void }
+export interface Picked { path: string; loc: number; first: number; last: number } // first/last: step indices
+export interface City { render(u: number): void; pick(clientX: number, clientY: number, u: number): Picked | null }
 
 export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLayout, tl: Timeline): City {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -34,8 +36,16 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   camera.position.set(S * 0.9, S * 0.8, S * 0.9)
   const controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
-  controls.autoRotate = true
-  controls.autoRotateSpeed = 0.4
+  // The auto camera flies until the user drags (> 5 px) or scrolls; double-click hands it back.
+  let manual = false
+  let down: { x: number; y: number } | null = null
+  canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY } })
+  canvas.addEventListener('pointermove', e => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) manual = true
+  })
+  addEventListener('pointerup', () => { down = null })
+  canvas.addEventListener('wheel', () => { manual = true }, { passive: true })
+  canvas.addEventListener('dblclick', () => { manual = false })
 
   const sig = signals(model, tl)
   const sky = createSky(scene, S)
@@ -71,6 +81,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   group.add(mesh)
   const rain = createRain(S)
   group.add(rain.object)
+  const ext = extents(model.files, lay, model.commits.length)
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2()
 
   const heightOf = (f: Building, loc: number) => Math.min(f.maxH, HEIGHT_K * Math.sqrt(loc))
   function heightAt(f: Building, k: number, u: number): number {
@@ -102,8 +114,23 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
       }
       mesh.instanceMatrix.needsUpdate = true
       glow.needsUpdate = true
-      controls.update()
+      if (manual) controls.update()
+      else {
+        const p = autoCamera(u, tl, ext, S)
+        camera.position.set(p.x, p.y, p.z)
+        camera.lookAt(0, 0, 0)
+      }
       renderer.render(scene, camera)
+    },
+    pick(clientX, clientY, u) {
+      const r = canvas.getBoundingClientRect()
+      ray.setFromCamera(ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera)
+      mesh.computeBoundingSphere() // instances move every frame; the raycast pre-check needs a fresh sphere
+      const id = ray.intersectObject(mesh)[0]?.instanceId
+      if (id === undefined) return null
+      const f = files[id], k = sampleAt(tl, f.s, u)
+      if (k < 0 || f.s[k][1] === 0) return null
+      return { path: f.path, loc: f.s[k][1], first: f.s[0][0], last: f.s[k][0] }
     },
   }
 }
