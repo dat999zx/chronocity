@@ -1,0 +1,11 @@
+{
+  "name": "chronocity",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "node --test packages/core/test.mjs",
+    "dev": "node scripts/dev.mjs",
+    "bake": "node packages/bake/bake.mjs"
+  }
+}
