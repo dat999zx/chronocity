@@ -17,8 +17,9 @@ one-click clips.
 
 1. **Gallery.** Pre-baked real histories served as static JSON. The page
    auto-plays one on load, so an HN visitor is interacting immediately.
-   Demos: `dat999zx/knowl` (public, 738 main-branch commits, 1,120 files,
-   37 MB pack) and chronocity itself.
+   Demos: `dat999zx/knowl` (public; 1,165 commits, which is 738 main-line
+   steps since merged branches land as one step; 1,120 files; 37 MB pack),
+   baked from a fresh GitHub clone, and chronocity itself.
 2. **Drop a repo folder.** Chromium: `showDirectoryPicker()` or the drop
    event's `getAsFileSystemHandle()`. Firefox/Safari: `webkitGetAsEntry()`.
    Only `.git/` is read, into an in-memory fs.
