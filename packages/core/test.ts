@@ -4,11 +4,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
-import type { Model, Sample } from './model.ts'
+import type { Commit, FileHistory, Model, Sample } from './model.ts'
 import { skipPath, isBinary, countLines } from './skip.ts'
 import { walk, sample } from './walker.ts'
 import { layout } from './layout.ts'
-import { timeline, stepAt, sampleAt, GAP_CAP } from './timeline.ts'
+import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP } from './timeline.ts'
 import { langOf } from './lang.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
@@ -163,4 +163,66 @@ test('langOf: language by extension, data files flagged', () => {
   assert.equal(langOf('.gitignore').name, 'Other')
   assert.equal(langOf('Makefile').name, 'Other')
 })
+
+const DAY0 = 1_699_920_000 // 2023-11-14 00:00 UTC
+// A commit at an author-local hour: [t, tz, churn]
+const at = (hour: number, tz = 0, day = 0): Commit => [DAY0 + day * 86400 + hour * 3600 - tz * 60, tz, 0]
+const mk = (commits: Commit[], files: FileHistory[] = []): Model => ({ v: 1, commits, files })
+
+test('elevation: +1 at noon, -1 at midnight, 0 at 06:00, scaled by r', () => {
+  assert.ok(Math.abs(elevation({ hour: 12, r: 1 }) - 1) < 1e-12)
+  assert.ok(Math.abs(elevation({ hour: 0, r: 0.5 }) + 0.5) < 1e-12)
+  assert.ok(Math.abs(elevation({ hour: 6, r: 1 })) < 1e-12)
+})
+
+test('sky: circular mean across midnight, author-local time, scattered hours', () => {
+  let m = mk([at(23), at(1, 0, 1)])
+  let s = signals(m, timeline(m, 1)).sky(4) // u past the end: every tap sees both commits
+  assert.ok(Math.min(s.hour, 24 - s.hour) < 1e-9, `23:00 + 01:00 gave ${s.hour}`) // midnight, not noon
+  assert.ok(Math.abs(s.r - Math.cos(Math.PI / 12)) < 1e-9)
+  m = mk([at(23, 420)])
+  s = signals(m, timeline(m, 1)).sky(3)
+  assert.ok(Math.abs(s.hour - 23) < 1e-9) // 16:00 UTC at +0700 is 23:00 for the author
+  m = mk([at(6), at(18)])
+  assert.ok(signals(m, timeline(m, 1)).sky(4).r < 1e-9) // opposite hours cancel out: twilight
+})
+
+test('sky: changes smoothly even when the hours flip', () => {
+  const m = mk([...Array(100).keys()].map(i => at(i < 50 ? 3 : 15, 0, i)))
+  const sg = signals(m, timeline(m, 30))
+  let prev = elevation(sg.sky(0)), maxJump = 0
+  for (let u = 0.05; u <= 32; u += 0.05) {
+    const e = elevation(sg.sky(u))
+    maxJump = Math.max(maxJump, Math.abs(e - prev))
+    prev = e
+  }
+  assert.ok(maxJump < 0.15, `sky jumped ${maxJump} in 0.05 s`)
+  assert.ok(elevation(sg.sky(10)) < -0.5 && elevation(sg.sky(31)) > 0.5) // 03:00 commits first, 15:00 later
+})
+
+test('fog: only in squeezed quiet stretches, strongest mid-gap', () => {
+  const m = mk(tlModel.commits), tl = timeline(m, 30), sg = signals(m, tl)
+  assert.equal(sg.fog(-1), 0)
+  assert.equal(sg.fog(0.2), 0)                       // 1-hour gap: clear
+  assert.ok(sg.fog((tl.u[1] + tl.u[2]) / 2) > 0.999) // 60-day gap: full fog mid-way
+  assert.equal(sg.fog(31), 0)                        // after the last commit
+})
+
+test('rain: storms on bursts of code churn, not data dumps', () => {
+  const commits = [...Array(40).keys()].map(i => [T + i * 3600, 0, 0] as Commit)
+  let loc = 0
+  const a: Sample[] = commits.map((_, i) => [i, (loc += i === 20 ? 5000 : 10)])
+  const m = mk(commits, [['a.ts', a], ['big.json', [[5, 100000]]]])
+  const sg = signals(m, timeline(m, 39)) // one commit per playback second
+  assert.equal(sg.rain(20.1), 1) // +5000 lines of code
+  assert.equal(sg.rain(10.1), 0) // an ordinary commit
+  assert.equal(sg.rain(5.1), 0)  // a 100k-line JSON dump is not a storm
+})
+
+test('signals: a one-commit repo has no weather', () => {
+  const m = mk([[T, 0, 0]]), sg = signals(m, timeline(m, 10))
+  assert.equal(sg.rain(0), 0)
+  assert.equal(sg.fog(0), 0)
+})
+
 
