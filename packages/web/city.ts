@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { sampleAt, type Timeline } from '@chronocity/core/timeline.ts'
+import { sampleAt, signals, type Timeline } from '@chronocity/core/timeline.ts'
 import { langOf } from '@chronocity/core/lang.ts'
 import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { Model, Sample } from '@chronocity/core/model.ts'
+import { createSky } from './sky.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -24,7 +25,6 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x1b1f27)
 
   const S = lay.size
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, S * 20)
@@ -34,10 +34,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   controls.autoRotate = true
   controls.autoRotateSpeed = 0.4
 
-  scene.add(new THREE.HemisphereLight(0xdde6ff, 0x30343c, 1.2))
-  const sun = new THREE.DirectionalLight(0xffffff, 1.5)
-  sun.position.set(S, S * 2, S * 0.5)
-  scene.add(sun)
+  const sig = signals(model, tl)
+  const sky = createSky(scene, S)
 
   const group = new THREE.Group()
   group.position.set(-S / 2, 0, -S / 2) // lay out in [0, S], orbit around the centre
@@ -84,6 +82,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
 
   return {
     render(u) {
+      sky.update(sig.sky(u), sig.fog(u))
       for (let i = 0; i < files.length; i++) {
         const f = files[i], h = heightAt(f, sampleAt(tl, f.s, u), u)
         if (h < 1e-3) m.makeScale(0, 0, 0)
