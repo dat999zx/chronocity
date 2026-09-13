@@ -125,13 +125,19 @@ takes `git` as a parameter instead of importing it: Node passes the npm
 
 - Each commit's `u_i` comes from gaps capped at `GAP_CAP` = 3 days, then
   scaled so the whole history fills `D`.
-- **Fog**: strength around `u_i` grows with how much of that gap was cut.
+- **Fog**: strength = (gap − GAP_CAP) / 4 days, clamped to 0..1, with a
+  sine envelope across the squeezed stretch. A 7-day gap is fully foggy.
   The fog marks skipped time.
-- **Rain**: churn in the trailing 1 s, divided by the repo's 90th-percentile churn.
-- **Sky**: circular mean of author-local commit hours over the trailing
-  2 s, computed from prefix sums of (cos, sin), so render(u) stays pure.
-  A short mean vector means commits are scattered around the clock, which
-  gives twilight.
+- **Rain**: *code* churn (data files excluded) in the trailing 0.5 s.
+  Thresholds come from 600 even samples of the clip: dry below the 90th
+  percentile, a full storm at the 99th. Including data files made rain
+  nearly constant on knowl, because regenerated 20k-line JSON dominated.
+- **Sky**: circular mean of author-local commit hours. It's computed from
+  prefix sums of (cos, sin), so render(u) stays pure. Each tap averages the
+  trailing 2 s but at least the last 12 commits, and 16 taps across that
+  2 s are averaged again; a plain window flipped night→day in 0.1 s on
+  knowl. A short mean vector means commits are scattered around the clock,
+  which gives twilight.
 - **Buildings**: height eases from the previous LOC to the new one over
   0.6 s after the step. Deleted files shrink to zero, then hide.
 - **Windows**: glow = 1 − (u − last touch) / 1.5 s, clamped. Drawn as a
