@@ -1,29 +1,42 @@
 import { layout } from '@chronocity/core/layout.ts'
-import { timeline, stepAt, sampleAt, codeChurn } from '@chronocity/core/timeline.ts'
+import { timeline, stepAt, codeChurn } from '@chronocity/core/timeline.ts'
+import { cityTotals } from '@chronocity/core/stats.ts'
 import type { Demo } from '@chronocity/core/model.ts'
 import { createCity, RISE } from './city.ts'
 import { createPanel } from './panel.ts'
-import type { Selection } from './selection.ts'
 import { createTicker } from './ticker.ts'
 import { createActivity } from './activity.ts'
+import type { Selection } from './selection.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
 const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
 const hudEl = $<HTMLDivElement>('hud'), playBtn = $<HTMLButtonElement>('play')
 const scrub = $<HTMLInputElement>('scrub'), speed = $<HTMLSelectElement>('speed')
 const canvas = $<HTMLCanvasElement>('city'), hoverEl = $<HTMLDivElement>('hover')
+const repoSel = $<HTMLSelectElement>('repo')
 
-const res = await fetch('demos/knowl.json')
-if (!res.ok) {
-  hudEl.textContent = `could not load the demo (${res.status})`
-  throw new Error(`demo fetch ${res.status}`)
+// ?repo=<name> picks a gallery demo · ?u=12.5 opens paused there · ?select=<path | folder | /> opens its panel
+const q = new URLSearchParams(location.search)
+
+async function load<T>(url: string): Promise<T> {
+  const res = await fetch(url)
+  if (!res.ok) {
+    hudEl.textContent = `could not load ${url} (${res.status})`
+    throw new Error(`${url}: ${res.status}`)
+  }
+  return res.json()
 }
-const model: Demo = await res.json()
+const gallery = await load<{ name: string; repo: string }[]>('demos/index.json')
+const demo = gallery.find(d => d.name === q.get('repo')) ?? gallery[0] // only listed names ever reach a URL
+const model = await load<Demo>(`demos/${demo.name}.json`)
 const format: number = model.v // widened, so the check below doesn't narrow `model` to never
 if (format !== 2) {
   hudEl.textContent = 'this demo was baked by an older chronocity; re-bake it'
   throw new Error(`demo format v${format}`)
 }
+for (const d of gallery) repoSel.append(new Option(d.name, d.name, false, d === demo))
+repoSel.onchange = () => { location.search = `?repo=${encodeURIComponent(repoSel.value)}` }
+
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
 const city = createCity(canvas, model, lay, tl)
@@ -34,7 +47,6 @@ const churn = codeChurn(model)
 const ticker = createTicker($<HTMLDivElement>('ticker'), model, tl, churn, local)
 const bars = createActivity($<HTMLCanvasElement>('activity'), churn, tl, D + TAIL)
 
-const q = new URLSearchParams(location.search) // ?u=12.5 opens paused there; ?select=<path | folder | /> opens its panel
 let u = q.has('u') ? +q.get('u')! : 0
 let playing = !q.has('u')
 let last = performance.now()
@@ -103,12 +115,7 @@ function updateHover() {
 }
 
 function hud() {
-  const i = stepAt(tl, u)
-  let files = 0, loc = 0
-  for (const [, s] of model.files) {
-    const k = sampleAt(tl, s, u)
-    if (k >= 0 && s[k][1] > 0) { files++; loc += s[k][1] }
-  }
+  const i = stepAt(tl, u), { files, loc } = cityTotals(model, tl, u)
   // Date only: the sky shows the recent commits' average hour, so a single commit's clock time would contradict it.
   const date = local(Math.max(i, 0)).slice(0, 10)
   hudEl.textContent = `${model.repo} · ${date} · commit ${i + 1}/${model.commits.length} · ${files} files · ${loc.toLocaleString()} lines`
