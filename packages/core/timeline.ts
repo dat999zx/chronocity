@@ -38,6 +38,7 @@ function lastAtOrBefore(n: number, at: (i: number) => number, u: number): number
 }
 
 export const FOG_RAMP = 4 * 86400 // gap beyond GAP_CAP at which fog is full: a 7-day gap is fully foggy
+export const FOG_MIN_LEN = 1.2    // playback seconds a fog bank lasts at least (a quiet month in a 12-year history squeezes to a frame: a flash)
 export const SKY_WINDOW = 2       // playback seconds of commits that set the sky...
 export const SKY_TAPS = 16        // ...averaged at this many points, so the sky never snaps
 export const SKY_MIN_COMMITS = 12 // a sparse stretch still averages at least this many commits
@@ -83,6 +84,14 @@ export function signals(model: Model, tl: Timeline): Signals {
   // Rain thresholds come from the whole clip sampled evenly, so "wet" means a share of playback time.
   const clip = Array.from({ length: 600 }, (_, j) => codeChurnPerWindow((j / 599) * tl.D)).sort((x, y) => x - y)
   const dry = clip[540], storm = clip[594]
+  // Quiet stretches, as fog banks. A gap counts by its time per commit: a sampled step can bring many commits, and a
+  // 4-day gap holding 10 of them was busy (React had 622 such gaps, so the fog strobed). Each bank lasts ≥ FOG_MIN_LEN.
+  const banks: [mid: number, half: number, strength: number][] = []
+  for (let k = 0; k < n - 1; k++) {
+    const perCommit = (c[k + 1][0] - c[k][0]) / Math.max(1, c[k + 1][6])
+    const strength = Math.min(1, Math.max(0, (perCommit - GAP_CAP) / FOG_RAMP))
+    if (strength > 0) banks.push([(tl.u[k] + tl.u[k + 1]) / 2, Math.max(tl.u[k + 1] - tl.u[k], FOG_MIN_LEN) / 2, strength])
+  }
 
   return {
     sky(u) {
@@ -95,11 +104,10 @@ export function signals(model: Model, tl: Timeline): Signals {
       return { hour: ((Math.atan2(y, x) / (2 * Math.PI)) * 24 + 24) % 24, r: Math.hypot(x, y) }
     },
     fog(u) {
-      const k = stepAt(tl, u)
-      if (k < 0 || k >= n - 1) return 0
-      const strength = Math.min(1, Math.max(0, (c[k + 1][0] - c[k][0] - GAP_CAP) / FOG_RAMP))
-      const len = tl.u[k + 1] - tl.u[k]
-      return len > 0 ? strength * Math.sin((Math.PI * (u - tl.u[k])) / len) : 0
+      let f = 0
+      for (const [mid, half, strength] of banks)
+        if (Math.abs(u - mid) < half) f = Math.max(f, strength * Math.cos((Math.PI / 2) * ((u - mid) / half)))
+      return f
     },
     rain(u) {
       return storm > dry ? Math.min(1, Math.max(0, (codeChurnPerWindow(u) - dry) / (storm - dry))) : 0

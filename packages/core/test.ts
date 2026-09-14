@@ -8,7 +8,7 @@ import type { Commit, FileHistory, Model, Sample } from './model.ts'
 import { skipPath, isBinary, countLines } from './skip.ts'
 import { walk, sample, lineCounts, addDel, subjectOf } from './walker.ts'
 import { layout } from './layout.ts'
-import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
+import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, FOG_MIN_LEN, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
 import { githubRepoOf } from './remote.ts'
 import { fileStats, districtStats, series, cityTotals, commitsUpTo } from './stats.ts'
@@ -251,6 +251,18 @@ test('fog: only in squeezed quiet stretches, strongest mid-gap', () => {
   assert.equal(sg.fog(0.2), 0)                       // 1-hour gap: clear
   assert.ok(sg.fog((tl.u[1] + tl.u[2]) / 2) > 0.999) // 60-day gap: full fog mid-way
   assert.equal(sg.fog(31), 0)                        // after the last commit
+})
+
+test('fog: sampled steps that bring many commits are busy, and a real quiet stretch lasts FOG_MIN_LEN on screen', () => {
+  // Years of steps 4 days apart, each bringing 10 commits (a big repo sampled to 1,000 steps), then a real
+  // 100-day silence before one lone commit, squeezed into a sliver of playback.
+  const commits = [...Array(1000).keys()].map(i => { const c = C(T + i * 4 * 86400 + (i > 500 ? 100 * 86400 : 0)); c[6] = i === 501 ? 1 : 10; return c })
+  const m = mk(commits), tl = timeline(m, 30), sg = signals(m, tl)
+  assert.equal(sg.fog((tl.u[100] + tl.u[101]) / 2), 0) // 4 days but 10 commits: not quiet
+  const mid = (tl.u[500] + tl.u[501]) / 2
+  assert.ok(tl.u[501] - tl.u[500] < 0.1)                // squeezed to a flash...
+  assert.ok(sg.fog(mid) > 0.999)
+  assert.ok(sg.fog(mid - FOG_MIN_LEN / 4) > 0.5 && sg.fog(mid + FOG_MIN_LEN / 4) > 0.5) // ...but shown as a bank
 })
 
 test('rain: storms on bursts of code churn, not data dumps', () => {
