@@ -290,6 +290,18 @@ test('aging: real time glides between steps; scaffolding fades over 3 days; weat
   assert.equal(weathering(commits, s, -1, T), 0)                         // not built yet
 })
 
+test('owners: lines added per author up to u, largest first; data files never crown an owner', () => {
+  const by = (t: number, author: string): Commit => { const c = C(t); c[5] = author; return c }
+  const m = mk([by(T, 'ann'), by(T + 3600, 'bob'), by(T + 7200, 'ann')], [
+    ['src/a.ts', [[0, 60, 60, 0], [1, 80, 30, 10], [2, 90, 10, 0]]],
+    ['src/b.json', [[1, 500, 500, 0]]],
+  ])
+  const tl = timeline(m, 10)
+  assert.deepEqual(fileStats(m, tl, 0, 99)!.owners, [{ author: 'ann', share: 0.7 }, { author: 'bob', share: 0.3 }])
+  assert.deepEqual(fileStats(m, tl, 0, tl.u[0])!.owners, [{ author: 'ann', share: 1 }]) // before bob's edit
+  assert.deepEqual(districtStats(m, tl, 'src', 99).owners.map(o => o.author), ['ann', 'bob']) // bob's 500-line JSON doesn't count
+})
+
 test('rain: storms on bursts of code churn, not data dumps', () => {
   const commits = [...Array(40).keys()].map(i => C(T + i * 3600))
   let loc = 0
@@ -323,6 +335,7 @@ test('fileStats: size, first/last, recent changes newest first; null before it e
   assert.deepEqual(fileStats(statsModel, statsTl, 0, 1.5), {
     loc: 12, first: 0, last: 1, changes: 2,
     recent: [{ step: 1, add: 3, del: 1 }, { step: 0, add: 10, del: 0 }],
+    owners: [{ author: '', share: 1 }],
   })
   assert.equal(fileStats(statsModel, statsTl, 1, 0.5), null)
 })
@@ -332,6 +345,7 @@ test('districtStats: folder totals, languages, tallest; root covers everything',
     files: 2, loc: 16, changes: 3, first: 0, last: 1,
     langs: [{ name: 'TypeScript', color: 0x3178c6, loc: 12 }, { name: 'Markdown', color: 0x083fa1, loc: 4 }],
     top: [0, 1],
+    owners: [{ author: '', share: 1 }],
   })
   const root = districtStats(statsModel, statsTl, '', 2) // a.ts demolished by now
   assert.deepEqual([root.files, root.loc, root.changes, root.first, root.last, root.top], [2, 104, 5, 0, 2, [1]]) // c.json is a warehouse, not a tower

@@ -2,6 +2,7 @@ import type { Demo } from '@chronocity/core/model.ts'
 import type { CityLayout } from '@chronocity/core/layout.ts'
 import { stepAt, type Timeline } from '@chronocity/core/timeline.ts'
 import { fileStats, districtStats, series } from '@chronocity/core/stats.ts'
+import { MAX_STEPS } from '@chronocity/core/walker.ts'
 import { langOf } from '@chronocity/core/lang.ts'
 import type { Selection } from './selection.ts'
 import { commitUrl, stepPatch } from './github.ts'
@@ -9,6 +10,7 @@ import { commitUrl, stepPatch } from './github.ts'
 const DIFF_LINES = 60 // patch lines shown before "… N more lines"
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0')
+const pct = (share: number) => `${Math.max(1, Math.round(share * 100))}%`
 
 // Every repo-sourced string goes in through textContent: paths, subjects, authors and patches are untrusted.
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
@@ -40,6 +42,9 @@ export interface Panel {
 // The glass card pinned to the selection by a leader line.
 export function createPanel(card: HTMLElement, leader: SVGSVGElement, ctx: PanelContext): Panel {
   const { model, lay, tl } = ctx
+  // Owners only when every step is one commit. A sampled history (MAX_STEPS) bundles ~7 commits a step and credits
+  // them all to one: on React that made dependabot the "owner" of ReactFiberWorkLoop.js.
+  const exactAuthors = model.commits.length < MAX_STEPS
   const line = leader.querySelector('line')!
   const body = el('div'), diffBox = el('div', 'diffbox')
   const byPath = new Map(lay.districts.map((d, i) => [d[5], i]))
@@ -89,6 +94,8 @@ export function createPanel(card: HTMLElement, leader: SVGSVGElement, ctx: Panel
       sparkline(u),
       el('div', 'meta', `${st.changes} change${st.changes === 1 ? '' : 's'} · since ${date(st.first)} · last ${date(st.last)}`),
     )
+    const [lead] = st.owners
+    if (lead && exactAuthors) nodes.push(el('div', 'meta', lead.share > 0.995 ? `by ${lead.author}` : `mostly by ${lead.author} · ${pct(lead.share)} of its lines`))
     const rows = el('div', 'rows')
     for (const c of st.recent) {
       const row = el('button', 'row'), nums = el('span')
@@ -122,6 +129,7 @@ export function createPanel(card: HTMLElement, leader: SVGSVGElement, ctx: Panel
     }
     nodes.push(sparkline(u))
     if (st.first >= 0) nodes.push(el('div', 'meta', `${st.changes.toLocaleString()} changes · since ${date(st.first)} · last ${date(st.last)}`))
+    if (st.owners.length && exactAuthors) nodes.push(el('div', 'meta', st.owners.length === 1 ? `by ${st.owners[0].author}` : `built by ${st.owners.map(o => `${o.author} ${pct(o.share)}`).join(' · ')}`))
     const rows = el('div', 'rows')
     st.top.forEach((i, rank) => {
       const [path] = model.files[i], row = el('button', 'row')

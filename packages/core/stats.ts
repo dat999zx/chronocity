@@ -1,14 +1,16 @@
 import { langOf } from './lang.ts'
-import type { Model } from './model.ts'
+import type { Model, Sample } from './model.ts'
 import { sampleAt, type Timeline } from './timeline.ts'
 
 export interface Change { step: number; add: number; del: number }
+export interface Owner { author: string; share: number } // share of the lines added
 export interface FileStats {
   loc: number
   first: number   // step it first appeared
   last: number    // step of its latest change at or before u
   changes: number // changes at or before u, the first one included
   recent: Change[] // newest first
+  owners: Owner[]  // who added its lines, largest first
 }
 export interface LangShare { name: string; color: number; loc: number }
 export interface DistrictStats {
@@ -19,6 +21,21 @@ export interface DistrictStats {
   last: number
   langs: LangShare[] // by standing lines, largest first
   top: number[]      // indices into model.files of the tallest standing buildings (data files excluded)
+  owners: Owner[]    // who added the lines under the folder (data files excluded), largest first
+}
+
+// Lines added per author, up to sample k. Each step counts as its commit's author: on a sampled history a step can
+// bundle several people's commits, so on big repos this is approximate.
+function tally(by: Map<string, number>, model: Model, s: Sample[], k: number) {
+  for (let j = 0; j <= k; j++) {
+    const add = s[j][2]
+    if (add) by.set(model.commits[s[j][0]][5], (by.get(model.commits[s[j][0]][5]) ?? 0) + add)
+  }
+}
+function topOwners(by: Map<string, number>, n: number): Owner[] {
+  let total = 0
+  for (const v of by.values()) total += v
+  return [...by].sort((a, b) => b[1] - a[1]).slice(0, n).map(([author, lines]) => ({ author, share: lines / total }))
 }
 
 // One file at playback time u; null before it first appears.
@@ -27,7 +44,9 @@ export function fileStats(model: Model, tl: Timeline, index: number, u: number, 
   if (k < 0) return null
   const changes: Change[] = []
   for (let j = k; j >= 0 && changes.length < recent; j--) changes.push({ step: s[j][0], add: s[j][2], del: s[j][3] })
-  return { loc: s[k][1], first: s[0][0], last: s[k][0], changes: k + 1, recent: changes }
+  const by = new Map<string, number>()
+  tally(by, model, s, k)
+  return { loc: s[k][1], first: s[0][0], last: s[k][0], changes: k + 1, recent: changes, owners: topOwners(by, 3) }
 }
 
 // Everything under a folder ('' = the whole repo) at playback time u.
@@ -35,12 +54,14 @@ export function districtStats(model: Model, tl: Timeline, folder: string, u: num
   const prefix = folder ? folder + '/' : ''
   const langs = new Map<string, LangShare>()
   const standing: [index: number, loc: number][] = []
+  const by = new Map<string, number>()
   let files = 0, loc = 0, changes = 0, first = -1, last = -1
   model.files.forEach(([path, s], i) => {
     if (!path.startsWith(prefix)) return
     const k = sampleAt(tl, s, u)
     if (k < 0) return
     changes += k + 1
+    if (!langOf(path).data) tally(by, model, s, k)
     if (first < 0 || s[0][0] < first) first = s[0][0]
     if (s[k][0] > last) last = s[k][0]
     const l = s[k][1]
@@ -57,6 +78,7 @@ export function districtStats(model: Model, tl: Timeline, folder: string, u: num
     files, loc, changes, first, last,
     langs: [...langs.values()].sort((a, b) => b.loc - a.loc),
     top: standing.sort((a, b) => b[1] - a[1]).slice(0, topN).map(([i]) => i),
+    owners: topOwners(by, 3),
   }
 }
 
