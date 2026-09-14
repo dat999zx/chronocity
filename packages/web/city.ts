@@ -17,6 +17,8 @@ import { autoCamera, extents } from './camera.ts'
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
 export const DATA_MAX_H = 2.5 // data files (json, csv, ...) stay low: warehouses, not towers
+export const REF_SIZE = 40    // cities narrower than this get proportionally shorter buildings: a small repo is a town,
+                              // not three mega-towers on a tiny plot (knowl, ~45 wide, is unaffected)
 export const RISE = 0.6       // playback seconds for a height change to ease in
 export const GLOW = 1.5       // playback seconds a touched file's windows stay lit
 export const FLY_MS = 900     // camera flight to and from a selection
@@ -63,6 +65,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const scene = new THREE.Scene()
 
   const S = lay.size
+  const scale = Math.min(1, S / REF_SIZE) // height scale for small cities
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, S * 20)
   camera.position.set(S * 0.9, S * 0.8, S * 0.9)
   const controls = new OrbitControls(camera, canvas)
@@ -120,7 +123,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const files: Building[] = model.files.map(([path, s]) => {
     const [x, z, w, d] = lay.lots.get(path)!
     const g = 0.15 * Math.min(w, d) // building footprint = lot inset by 15%
-    return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g, maxH: langOf(path).data ? DATA_MAX_H : MAX_H, h: 0 }
+    return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g, maxH: (langOf(path).data ? DATA_MAX_H : MAX_H) * scale, h: 0 }
   })
   const night = { value: 0 }, spot = { value: 0 }, hover = { value: -1 }
   const glow = new THREE.InstancedBufferAttribute(new Float32Array(files.length), 1).setUsage(THREE.DynamicDrawUsage)
@@ -141,7 +144,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), v = new THREE.Vector3()
   let spotTarget = 0, lastNow = performance.now(), clipping = false
 
-  const heightOf = (f: Building, loc: number) => Math.min(f.maxH, HEIGHT_K * Math.sqrt(loc))
+  const heightOf = (f: Building, loc: number) => Math.min(f.maxH, HEIGHT_K * scale * Math.sqrt(loc))
   function heightAt(f: Building, k: number, u: number): number {
     if (k < 0) return 0
     const from = k > 0 ? heightOf(f, f.s[k - 1][1]) : 0

@@ -18,6 +18,7 @@ export interface ClipContext {
   tl: Timeline
   city: City
   churn: Float64Array
+  upTo: Int32Array            // real commits so far at each step (commitsUpTo)
   span: number                // playback seconds the clip covers (D + TAIL)
   local(step: number): string // a step's author-local ISO timestamp
 }
@@ -66,11 +67,11 @@ export async function renderClip(ctx: ClipContext, shape: Shape, onProgress: (do
   return new Blob([output.target.buffer!], { type: 'video/mp4' })
 }
 
-// Headline, repo name and "date · lines" stacked bottom-left; the watermark bottom-right. Scaled to the frame.
+// Headline, repo name and "date · commits · lines" stacked bottom-left; the watermark bottom-right. Scaled to the frame.
 function drawOverlay(g: CanvasRenderingContext2D, ctx: ClipContext, u: number, w: number, h: number) {
   const s = Math.min(w, h) / 1080, pad = 56 * s
   const { model, tl } = ctx
-  const step = Math.max(0, stepAt(tl, u))
+  const at = stepAt(tl, u), step = Math.max(0, at), commits = at >= 0 ? ctx.upTo[at] : 0
   const { loc } = cityTotals(model, tl, u)
   // The clip plays about 2.1× faster than the app, so widen the headline window to keep ~0.6 s per headline on screen.
   const head = headline(ctx.churn, tl, u, TICK * (ctx.span / SECONDS))
@@ -86,7 +87,7 @@ function drawOverlay(g: CanvasRenderingContext2D, ctx: ClipContext, u: number, w
   g.globalAlpha = 1
   let y = h - pad - 50 * s
   g.font = `400 ${32 * s}px system-ui, sans-serif`
-  g.fillText(`${ctx.local(step).slice(0, 10)} · ${loc.toLocaleString('en-US')} lines`, pad, y)
+  g.fillText(`${ctx.local(step).slice(0, 10)} · ${commits.toLocaleString('en-US')} commits · ${loc.toLocaleString('en-US')} lines`, pad, y)
   y -= 52 * s
   g.font = `700 ${46 * s}px system-ui, sans-serif`
   g.fillText(model.repo, pad, y)

@@ -73,6 +73,14 @@ export function series(model: Model, tl: Timeline, indices: number[], points = 4
   return out
 }
 
+// Running total of real commits at each step (a merge brings its branch's commits): "commit N / total" like GitHub counts.
+export function commitsUpTo(model: Model): Int32Array {
+  const out = new Int32Array(model.commits.length)
+  let sum = 0
+  model.commits.forEach((c, i) => { out[i] = sum += c[6] })
+  return out
+}
+
 export interface Totals { files: number; loc: number }
 
 // Standing files and their lines at playback time u: the HUD and the clip overlay.

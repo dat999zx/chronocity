@@ -1,6 +1,6 @@
 import { layout } from '@chronocity/core/layout.ts'
 import { timeline, stepAt, codeChurn } from '@chronocity/core/timeline.ts'
-import { cityTotals } from '@chronocity/core/stats.ts'
+import { cityTotals, commitsUpTo } from '@chronocity/core/stats.ts'
 import type { Demo } from '@chronocity/core/model.ts'
 import { createCity, RISE } from './city.ts'
 import { createPanel } from './panel.ts'
@@ -32,7 +32,7 @@ const gallery = await load<{ name: string; repo: string }[]>('demos/index.json')
 const demo = gallery.find(d => d.name === q.get('repo')) ?? gallery[0] // only listed names ever reach a URL
 const model = await load<Demo>(`demos/${demo.name}.json`)
 const format: number = model.v // widened, so the check below doesn't narrow `model` to never
-if (format !== 2) {
+if (format !== 3) {
   hudEl.textContent = 'this demo was baked by an older chronocity; re-bake it'
   throw new Error(`demo format v${format}`)
 }
@@ -41,6 +41,7 @@ repoSel.onchange = () => { location.search = `?repo=${encodeURIComponent(repoSel
 
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
+const upTo = commitsUpTo(model), totalCommits = upTo[upTo.length - 1] ?? 0
 const city = createCity(canvas, model, lay, tl)
 // A step's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
 const local = (i: number) => { const [t, tz] = model.commits[i]; return new Date((t + tz * 60) * 1000).toISOString() }
@@ -69,7 +70,7 @@ async function exportClip(shape: Shape) {
   clipMsg.textContent = `Rendering ${w}×${h}…`
   clipBar.value = 0
   try {
-    const blob = await renderClip({ model, tl, city, churn, span: D + TAIL, local }, shape, (done, total) => {
+    const blob = await renderClip({ model, tl, city, churn, upTo, span: D + TAIL, local }, shape, (done, total) => {
       const left = (((performance.now() - t0) / done) * (total - done)) / 1000
       clipMsg.textContent = `Rendering ${w}×${h} · ${Math.round((done / total) * 100)}% · ~${Math.ceil(left)} s left`
       clipBar.value = done / total
@@ -161,7 +162,8 @@ function hud() {
   const i = stepAt(tl, u), { files, loc } = cityTotals(model, tl, u)
   // Date only: the sky shows the recent commits' average hour, so a single commit's clock time would contradict it.
   const date = local(Math.max(i, 0)).slice(0, 10)
-  hudEl.textContent = `${model.repo} · ${date} · commit ${i + 1}/${model.commits.length} · ${files} files · ${loc.toLocaleString()} lines`
+  const done = i >= 0 ? upTo[i] : 0 // real commits so far, merged branches included (GitHub's count, not main-line steps)
+  hudEl.textContent = `${model.repo} · ${date} · commit ${done.toLocaleString()}/${totalCommits.toLocaleString()} · ${files} files · ${loc.toLocaleString()} lines`
 }
 
 function frame(now: number) {

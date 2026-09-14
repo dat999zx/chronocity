@@ -65,12 +65,13 @@ export function subjectOf(message: string): string {
   return (pr && title ? `${title} (${pr[1]})` : lines[0]).slice(0, 100)
 }
 
-// Walk the first-parent history of `ref` and return a Model (spec: "Model v2").
+// Walk the first-parent history of `ref` and return a Model (spec: "Model").
 export async function walk({ git, fs, dir, gitdir, ref = 'HEAD', maxSteps = MAX_STEPS, onProgress = () => {} }: WalkOptions): Promise<Model> {
   const cache = {} // shared packfile cache: without it every read re-parses the pack index
   const o: ReadOpts = { fs, dir, gitdir, cache }
 
-  const chain: { oid: string; tree: string; t: number; tz: number; subject: string; author: string }[] = []
+  type Link = { oid: string; tree: string; t: number; tz: number; subject: string; author: string; parents: string[]; upTo: number }
+  const chain: Link[] = []
   for (let oid: string | undefined = await git.resolveRef({ fs, dir, gitdir, ref }); oid; ) {
     const { commit } = await git.readCommit({ ...o, oid })
     chain.push({
@@ -81,10 +82,29 @@ export async function walk({ git, fs, dir, gitdir, ref = 'HEAD', maxSteps = MAX_
       tz: -commit.author.timezoneOffset || 0,
       subject: subjectOf(commit.message),
       author: commit.author.name,
+      parents: commit.parent,
+      upTo: 0,
     })
     oid = commit.parent[0]
   }
-  const steps = sample(chain.reverse(), maxSteps)
+  chain.reverse()
+
+  // Commits reachable from each main-line link, counted once: a merge brings in its branch's commits too. `upTo` is the
+  // running total, so the last link's is the repo's commit count (GitHub's number) and sampled steps can take deltas.
+  const seen = new Set<string>()
+  let total = 0
+  for (const link of chain) {
+    const stack = [link.oid]
+    while (stack.length) {
+      const oid = stack.pop()!
+      if (seen.has(oid)) continue
+      seen.add(oid)
+      total++
+      stack.push(...(oid === link.oid ? link.parents : (await git.readCommit({ ...o, oid })).commit.parent))
+    }
+    link.upTo = total
+  }
+  const steps = sample(chain, maxSteps)
 
   // Each live file keeps its current line counts so the next version can be diffed against it.
   const files = new Map<string, { s: Sample[]; last: number; lines?: LineCounts } | 'binary'>()
@@ -117,14 +137,14 @@ export async function walk({ git, fs, dir, gitdir, ref = 'HEAD', maxSteps = MAX_
       f.lines = lines
       f.s.push([i, loc, add, del])
     }
-    const { oid, t, tz, subject, author } = steps[i]
-    commits.push([t, tz, churn, oid, subject, author])
+    const { oid, t, tz, subject, author, upTo } = steps[i]
+    commits.push([t, tz, churn, oid, subject, author, upTo - (i > 0 ? steps[i - 1].upTo : 0)])
     if (i % 25 === 0) onProgress(i, steps.length)
   }
   onProgress(steps.length, steps.length)
   const out: FileHistory[] = []
   for (const [path, f] of files) if (f !== 'binary') out.push([path, f.s])
-  return { v: 2, commits, files: out }
+  return { v: 3, commits, files: out }
 }
 
 // Symlinks and submodules aren't buildings.

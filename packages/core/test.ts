@@ -10,7 +10,7 @@ import { walk, sample, lineCounts, addDel, subjectOf } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
-import { fileStats, districtStats, series, cityTotals } from './stats.ts'
+import { fileStats, districtStats, series, cityTotals, commitsUpTo } from './stats.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -53,8 +53,8 @@ test('subjectOf: first line, or the PR title for GitHub merge commits', () => {
 })
 
 const T = 1_700_000_000
-// A bare commit for timeline-only tests: [t, tz, churn, sha, subject, author]
-const C = (t: number, tz = 0, churn = 0): Commit => [t, tz, churn, '', '', '']
+// A bare commit for timeline-only tests: [t, tz, churn, sha, subject, author, commits]
+const C = (t: number, tz = 0, churn = 0): Commit => [t, tz, churn, '', '', '', 1]
 
 // c1: add a.ts (3 lines), a lockfile, a binary · c2: edit a.ts (2→two, +4, +5), add src/b.rs · c3: delete a.ts (60 days later)
 async function fixtureRepo(): Promise<string> {
@@ -85,9 +85,9 @@ async function fixtureRepo(): Promise<string> {
 test('walk: LOC with lines added/removed, deletes, skips, commit meta', async () => {
   const dir = await fixtureRepo()
   const model = await walk({ git, fs, dir })
-  assert.equal(model.v, 2)
+  assert.equal(model.v, 3)
   assert.deepEqual(model.commits.map(c => c.slice(0, 3)), [[T, 420, 3], [T + 3600, 420, 3], [T + 60 * 86400, 420, 5]])
-  assert.deepEqual(model.commits.map(c => [c[4], c[5]]), [['c1', 't'], ['c2 edit', 't'], ['c3', 't']])
+  assert.deepEqual(model.commits.map(c => [c[4], c[5], c[6]]), [['c1', 't', 1], ['c2 edit', 't', 1], ['c3', 't', 1]])
   for (const c of model.commits) assert.match(c[3], /^[0-9a-f]{40}$/)
   assert.deepEqual(Object.fromEntries(model.files), {
     'a.ts': [[0, 3, 3, 0], [1, 5, 3, 1], [2, 0, 0, 5]],
@@ -100,7 +100,31 @@ test('walk: maxSteps samples history and diffs across the gap', async () => {
   const dir = await fixtureRepo()
   const model = await walk({ git, fs, dir, maxSteps: 2 })
   assert.deepEqual(model.commits.map(c => c[0]), [T, T + 60 * 86400])
+  assert.deepEqual(model.commits.map(c => c[6]), [1, 2]) // the c3 step also carries the skipped c2
   assert.deepEqual(Object.fromEntries(model.files), { 'a.ts': [[0, 3, 3, 0], [1, 0, 0, 3]], 'src/b.rs': [[1, 1, 1, 0]] })
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('walk: a merged branch counts all its commits, so steps sum to the full commit count', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chronocity-'))
+  const author = (timestamp: number) => ({ name: 't', email: 't@example.com', timestamp, timezoneOffset: 0 })
+  const commitFile = async (file: string, message: string, timestamp: number) => {
+    fs.writeFileSync(path.join(dir, file), `${message}\n`)
+    await git.add({ fs, dir, filepath: file })
+    await git.commit({ fs, dir, message, author: author(timestamp) })
+  }
+  await git.init({ fs, dir, defaultBranch: 'main' })
+  await commitFile('a.ts', 'c1', T)
+  await git.branch({ fs, dir, ref: 'feature', checkout: true })
+  await commitFile('f1.ts', 'f1', T + 60)
+  await commitFile('f2.ts', 'f2', T + 120)
+  await git.checkout({ fs, dir, ref: 'main' })
+  await commitFile('b.ts', 'c2', T + 180)
+  await git.merge({ fs, dir, ours: 'main', theirs: 'feature', fastForward: false, message: 'Merge branch feature', author: author(T + 240) })
+  const model = await walk({ git, fs, dir })
+  // First-parent steps: c1, c2, the merge. The merge brings itself + f1 + f2: 5 commits in all, like `git rev-list --count`.
+  assert.deepEqual(model.commits.map(c => [c[4], c[6]]), [['c1', 1], ['c2', 1], ['Merge branch feature', 3]])
+  assert.deepEqual(model.files.map(f => f[0]).sort(), ['a.ts', 'b.ts', 'f1.ts', 'f2.ts'])
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -187,7 +211,7 @@ test('langOf: language by extension, data files flagged', () => {
 const DAY0 = 1_699_920_000 // 2023-11-14 00:00 UTC
 // A commit at an author-local hour
 const at = (hour: number, tz = 0, day = 0): Commit => C(DAY0 + day * 86400 + hour * 3600 - tz * 60, tz)
-const mk = (commits: Commit[], files: FileHistory[] = []): Model => ({ v: 2, commits, files })
+const mk = (commits: Commit[], files: FileHistory[] = []): Model => ({ v: 3, commits, files })
 
 test('elevation: +1 at noon, -1 at midnight, 0 at 06:00, scaled by r', () => {
   assert.ok(Math.abs(elevation({ hour: 12, r: 1 }) - 1) < 1e-12)
@@ -302,3 +326,9 @@ test('cityTotals: standing files and lines at u', () => {
 })
 
 
+
+test('commitsUpTo: running total of real commits, merges included', () => {
+  const cs = [C(T), C(T + 1), C(T + 2)]
+  cs[2][6] = 3 // a merge that brings two branch commits
+  assert.deepEqual([...commitsUpTo(mk(cs))], [1, 2, 5])
+})
