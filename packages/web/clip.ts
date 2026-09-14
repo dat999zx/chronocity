@@ -1,4 +1,4 @@
-import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, QUALITY_HIGH, canEncodeVideo } from 'mediabunny'
+import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, canEncodeVideo } from 'mediabunny'
 import { headline, stepAt, TICK, type Timeline } from '@chronocity/core/timeline.ts'
 import { cityTotals } from '@chronocity/core/stats.ts'
 import type { Demo } from '@chronocity/core/model.ts'
@@ -6,6 +6,9 @@ import type { City } from './city.ts'
 
 export const FPS = 30
 export const SECONDS = 15
+// ~9.5 MB per 15 s clip: fits Discord's 10 MB free upload limit, and social sites re-encode anyway.
+// ('high' quality produced 22 Mbps / 42 MB at 1080p.)
+export const BITRATE = 5_000_000
 export const SHAPES = { landscape: [1920, 1080], vertical: [1080, 1920] } as const
 export type Shape = keyof typeof SHAPES
 export const WATERMARK = 'chronocity · dat999zx.github.io/chronocity'
@@ -38,7 +41,7 @@ export async function renderClip(ctx: ClipContext, shape: Shape, onProgress: (do
   out.height = h
   const g = out.getContext('2d')!
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
-  const video = new CanvasSource(out, { codec: 'avc', quality: QUALITY_HIGH })
+  const video = new CanvasSource(out, { codec: 'avc', quality: new Quality({ bitrate: BITRATE, bitrateMode: 'variable' }) })
   output.addVideoTrack(video, { frameRate: FPS })
   await output.start()
   const total = FPS * SECONDS

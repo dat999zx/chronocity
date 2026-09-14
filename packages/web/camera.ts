@@ -6,7 +6,7 @@ export const ORBIT = 0.05 // radians per playback second (tuning knob)
 export const FRAME = 2.0  // camera distance per unit of built-up radius (tuning knob)
 export const ELEV = 0.55  // camera height per unit of distance: ~29° down, low enough to read as a skyline
 export const WIDE = 1.6   // the aspect FRAME was tuned for
-export const NARROW_PULL = 0.85 // how much narrower frames (vertical clips, phones) pull the camera back (tuning knob)
+export const NARROW_PULL = 0.65 // how much narrower frames (vertical clips, phones) pull the camera back (tuning knob; 0.85 left the city at ~70% of a 9:16 frame's width)
 
 // Radius of the built-up area at each step: the farthest lot (from the centre) of any file that has appeared.
 export function extents(files: FileHistory[], lay: CityLayout, steps: number): Float64Array {

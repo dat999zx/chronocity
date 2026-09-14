@@ -18,9 +18,12 @@ Every effect means something:
 - **Color** — language, in GitHub's linguist palette. Data files are low grey warehouses, not towers.
 
 Click any building or district for its story: size, history, its last changes with `+added −removed`, and the real diff from GitHub.
-Links like `?select=src/cli/program.ts` open straight to it.
+Links like `?select=src/cli/program.ts` open straight to it; `?repo=chronocity` switches the demo.
+Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> step one commit, <kbd>Esc</kbd> close.
 
 ## Run it
+
+Needs Node 24+ (tests and the bake script run the TypeScript directly).
 
 ```sh
 npm install
