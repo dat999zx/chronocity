@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
-import { sampleAt, signals, type Timeline } from '@chronocity/core/timeline.ts'
+import { sampleAt, signals, type SkyState, type Timeline } from '@chronocity/core/timeline.ts'
 import { langOf } from '@chronocity/core/lang.ts'
 import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { Model, Sample } from '@chronocity/core/model.ts'
@@ -13,6 +13,7 @@ import { createSky } from './sky.ts'
 import { createBuildingMaterial } from './buildingMaterial.ts'
 import { createRain } from './rain.ts'
 import { autoCamera, extents } from './camera.ts'
+import type { Effects } from './effects.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -56,7 +57,9 @@ export interface City {
   endClip(): void
 }
 
-export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLayout, tl: Timeline): City {
+const AFTERNOON: SkyState = { hour: 15, r: 0.9 } // the sky with day & night switched off: steady daylight, fixed shadows
+
+export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLayout, tl: Timeline, fx: Effects): City {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -196,15 +199,17 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   resize()
   addEventListener('resize', resize)
 
-  // Everything after the camera: sky, weather, buildings, windows, bloom. Pure in u.
+  // Everything after the camera: sky, weather, buildings, windows, bloom. Pure in u (and the effect switches).
   function drawScene(u: number) {
-    const wet = sig.rain(u)
-    night.value = sky.update(sig.sky(u), sig.fog(u), wet, camera.position.length()).night
+    const wet = fx.rain ? sig.rain(u) : 0
+    night.value = sky.update(fx.daynight ? sig.sky(u) : AFTERNOON, fx.fog ? sig.fog(u) : 0, wet, camera.position.length()).night
     rain.update(u, wet)
+    sky.shadows(fx.shadows)
+    bloom.enabled = fx.bloom
     for (let i = 0; i < files.length; i++) {
       const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
       f.h = h
-      glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
+      glow.setX(i, k < 0 || !fx.lights ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
       if (h < 1e-3) m.makeScale(0, 0, 0)
       else m.makeScale(f.w, h, f.d).setPosition(f.x, 0, f.z)
       mesh.setMatrixAt(i, m)

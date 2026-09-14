@@ -10,6 +10,7 @@ import type { Selection } from './selection.ts'
 import { canClip, renderClip, SHAPES, type Shape } from './clip.ts'
 import { createIntro, type GalleryEntry } from './intro.ts'
 import { loadLocal } from './local.ts'
+import { createEffectsMenu, loadEffects } from './effects.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
 const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
@@ -54,7 +55,10 @@ repoSel.hidden = repoSel.options.length < 2 // one demo and nothing dropped yet:
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
 const upTo = commitsUpTo(model), totalCommits = upTo[upTo.length - 1] ?? 0
-const city = createCity(canvas, model, lay, tl)
+const fx = loadEffects()
+const city = createCity(canvas, model, lay, tl, fx)
+const fxMenu = $<HTMLDivElement>('fxmenu')
+createEffectsMenu($<HTMLButtonElement>('fx'), fxMenu, fx)
 // A step's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
 const local = (i: number) => { const [t, tz] = model.commits[i]; return new Date((t + tz * 60) * 1000).toISOString() }
 const panel = createPanel($<HTMLDivElement>('panel'), $<SVGSVGElement>('leader'), { model, lay, tl, local, select })
@@ -151,7 +155,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Space') togglePlay()
   else if (e.key === 'ArrowRight') stepBy(1)
   else if (e.key === 'ArrowLeft') stepBy(-1)
-  else if (e.key === 'Escape') busy ? busy.abort() : intro.isOpen ? intro.hide() : select(null)
+  else if (e.key === 'Escape') busy ? busy.abort() : intro.isOpen ? intro.hide() : !fxMenu.hidden ? (fxMenu.hidden = true) : select(null)
   else return
   e.preventDefault()
 })

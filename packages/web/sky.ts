@@ -11,7 +11,10 @@ const SUN_LOW = new THREE.Color(0xffb070)
 const WHITE = new THREE.Color(0xffffff)
 
 export interface Weather { night: number } // how much the city should light its windows, 0..1
-export interface Sky { update(state: SkyState, fog: number, rain: number, cameraDistance: number): Weather }
+export interface Sky {
+  update(state: SkyState, fog: number, rain: number, cameraDistance: number): Weather
+  shadows(on: boolean): void
+}
 
 // A gradient dome, sun, ambient light and fog, all driven by the commit-hour sky and the weather signals.
 export function createSky(scene: THREE.Scene, S: number): Sky {
@@ -79,6 +82,9 @@ void main() {
       haze.color.copy(horizon)
       haze.density = (0.28 + 0.7 * fog + 0.25 * rain) / Math.max(1, cameraDistance)
       return { night: Math.min(1, night + 0.45 * golden + 0.3 * rain * day) }
+    },
+    shadows(on) {
+      sun.castShadow = on // three recompiles the lit materials when the shadow count changes
     },
   }
 }
