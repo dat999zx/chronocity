@@ -23,7 +23,8 @@ const q = new URLSearchParams(location.search)
 if (q.get('ui') === '0') document.body.classList.add('bare') // clean stills: README hero, link previews
 
 async function load<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetch(url, { cache: 'no-cache' }) // revalidate: Pages says max-age=600, which hid a new demo for 10 min
+
   if (!res.ok) {
     hudEl.textContent = `could not load ${url} (${res.status})`
     throw new Error(`${url}: ${res.status}`)
