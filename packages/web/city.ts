@@ -48,6 +48,10 @@ export interface City {
   select(sel: Selection | null): void
   /** Screen point to pin the panel to; null when it's off-screen or the building isn't standing. */
   anchor(sel: Selection): { x: number; y: number } | null
+  /** Render one clip frame at w×h (auto camera, no spotlight or hover, nothing time-based); returns the WebGL canvas. */
+  renderClip(u: number, w: number, h: number): HTMLCanvasElement
+  /** Back to the on-screen size and interactive state after a clip. */
+  endClip(): void
 }
 
 export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLayout, tl: Timeline): City {
@@ -135,7 +139,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   group.add(rain.object)
   const ext = extents(model.files, lay, model.commits.length)
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), v = new THREE.Vector3()
-  let spotTarget = 0, lastNow = performance.now()
+  let spotTarget = 0, lastNow = performance.now(), clipping = false
 
   const heightOf = (f: Building, loc: number) => Math.min(f.maxH, HEIGHT_K * Math.sqrt(loc))
   function heightAt(f: Building, k: number, u: number): number {
@@ -150,7 +154,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const isRoot = (sel: Selection) => sel.kind === 'district' && lay.districts[sel.index][4] === 0
 
   function autoPose(u: number): Pose {
-    const p = autoCamera(u, tl, ext, S)
+    const p = autoCamera(u, tl, ext, S, camera.aspect)
     return { pos: new THREE.Vector3(p.x, p.y, p.z), target: new THREE.Vector3() }
   }
 
@@ -180,6 +184,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   }
 
   function resize() {
+    if (clipping) return // a clip owns the canvas size until endClip()
     renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     composer.setSize(canvas.clientWidth, canvas.clientHeight)
     camera.aspect = canvas.clientWidth / canvas.clientHeight
@@ -187,6 +192,25 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   }
   resize()
   addEventListener('resize', resize)
+
+  // Everything after the camera: sky, weather, buildings, windows, bloom. Pure in u.
+  function drawScene(u: number) {
+    const wet = sig.rain(u)
+    night.value = sky.update(sig.sky(u), sig.fog(u), wet, camera.position.length()).night
+    rain.update(u, wet)
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
+      f.h = h
+      glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
+      if (h < 1e-3) m.makeScale(0, 0, 0)
+      else m.makeScale(f.w, h, f.d).setPosition(f.x, 0, f.z)
+      mesh.setMatrixAt(i, m)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    glow.needsUpdate = true
+    bloom.strength = 0.15 + 0.6 * night.value
+    composer.render()
+  }
 
   return {
     render(u) {
@@ -208,22 +232,36 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
         camera.lookAt(pose.target)
       } else controls.update() // manual, or orbiting the focused selection
       spot.value += (spotTarget - spot.value) * (1 - Math.exp(-dt * 8))
-
-      const wet = sig.rain(u)
-      night.value = sky.update(sig.sky(u), sig.fog(u), wet, camera.position.length()).night
-      rain.update(u, wet)
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
-        f.h = h
-        glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
-        if (h < 1e-3) m.makeScale(0, 0, 0)
-        else m.makeScale(f.w, h, f.d).setPosition(f.x, 0, f.z)
-        mesh.setMatrixAt(i, m)
+      drawScene(u)
+    },
+    renderClip(u, w, h) {
+      if (!clipping) {
+        // First clip frame: clip size at pixel ratio 1, auto camera, no spotlight or hover.
+        clipping = true
+        mode = 'auto'
+        fly = null
+        spot.value = 0
+        hover.value = -1
+        renderer.setPixelRatio(1)
+        renderer.setSize(w, h, false)
+        composer.setPixelRatio(1)
+        composer.setSize(w, h)
+        camera.aspect = w / h
+        camera.updateProjectionMatrix()
       }
-      mesh.instanceMatrix.needsUpdate = true
-      glow.needsUpdate = true
-      bloom.strength = 0.15 + 0.6 * night.value
-      composer.render()
+      const pose = autoPose(u)
+      camera.position.copy(pose.pos)
+      controls.target.copy(pose.target)
+      camera.lookAt(pose.target)
+      drawScene(u)
+      return renderer.domElement
+    },
+    endClip() {
+      if (!clipping) return
+      clipping = false
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+      composer.setPixelRatio(Math.min(devicePixelRatio, 2))
+      resize()
     },
     pick(clientX, clientY) {
       const r = canvas.getBoundingClientRect()
