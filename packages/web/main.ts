@@ -7,6 +7,7 @@ import { createPanel } from './panel.ts'
 import { createTicker } from './ticker.ts'
 import { createActivity } from './activity.ts'
 import type { Selection } from './selection.ts'
+import { canClip, renderClip, SHAPES, type Shape } from './clip.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
 const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
@@ -46,6 +47,47 @@ const panel = createPanel($<HTMLDivElement>('panel'), $<SVGSVGElement>('leader')
 const churn = codeChurn(model)
 const ticker = createTicker($<HTMLDivElement>('ticker'), model, tl, churn, local)
 const bars = createActivity($<HTMLCanvasElement>('activity'), churn, tl, D + TAIL)
+const clipBtn = $<HTMLButtonElement>('clip'), clipMenu = $<HTMLSpanElement>('clipmenu')
+const clipping = $<HTMLDivElement>('clipping'), clipMsg = $<HTMLDivElement>('clipmsg')
+const clipBar = $<HTMLProgressElement>('clipbar'), clipCancel = $<HTMLButtonElement>('clipcancel')
+let busy: AbortController | null = null // set while a clip renders; the render loop pauses
+
+canClip().then(ok => { clipBtn.hidden = !ok })
+clipBtn.onclick = () => { clipMenu.hidden = !clipMenu.hidden }
+clipMenu.querySelectorAll('button').forEach(b => { b.onclick = () => exportClip(b.dataset.shape as Shape) })
+clipCancel.onclick = () => { if (busy) busy.abort(); else clipping.hidden = true }
+
+async function exportClip(shape: Shape) {
+  clipMenu.hidden = true
+  select(null)
+  playing = false
+  busy = new AbortController()
+  clipping.hidden = false
+  clipCancel.textContent = 'Cancel'
+  const [w, h] = SHAPES[shape], t0 = performance.now()
+  clipMsg.textContent = `Rendering ${w}×${h}…`
+  clipBar.value = 0
+  try {
+    const blob = await renderClip({ model, tl, city, churn, span: D + TAIL, local }, shape, (done, total) => {
+      const left = (((performance.now() - t0) / done) * (total - done)) / 1000
+      clipMsg.textContent = `Rendering ${w}×${h} · ${Math.round((done / total) * 100)}% · ~${Math.ceil(left)} s left`
+      clipBar.value = done / total
+    }, busy.signal)
+    clipping.hidden = true
+    if (blob) {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `chronocity-${demo.name}-${shape === 'landscape' ? '16x9' : '9x16'}.mp4`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
+    }
+  } catch (e) {
+    clipMsg.textContent = `Couldn't render the clip: ${(e as Error).message}`
+    clipCancel.textContent = 'Close'
+  } finally {
+    busy = null
+  }
+}
 
 let u = q.has('u') ? +q.get('u')! : 0
 let playing = !q.has('u')
@@ -86,7 +128,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Space') togglePlay()
   else if (e.key === 'ArrowRight') stepBy(1)
   else if (e.key === 'ArrowLeft') stepBy(-1)
-  else if (e.key === 'Escape') select(null)
+  else if (e.key === 'Escape') busy ? busy.abort() : select(null)
   else return
   e.preventDefault()
 })
@@ -122,6 +164,11 @@ function hud() {
 }
 
 function frame(now: number) {
+  if (busy) { // a clip owns the renderer; keep the clock fresh so playback doesn't jump afterwards
+    last = now
+    requestAnimationFrame(frame)
+    return
+  }
   const dt = Math.min(0.1, (now - last) / 1000)
   last = now
   if (playing) {

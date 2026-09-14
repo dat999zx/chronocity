@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "dependencies": {
+    "mediabunny": "^1.56.2",
     "three": "^0.186.0"
   },
   "devDependencies": {

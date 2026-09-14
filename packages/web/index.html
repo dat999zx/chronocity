@@ -51,6 +51,13 @@
     font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre }
   #panel .gh { font-size: 12px; color: #9fb3d9 }
   .add { color: #7ee2a8 } .del { color: #ff8f8f } .hunk { color: #8fb3ff }
+  #clipwrap { position: relative }
+  #clipmenu { position: absolute; right: 0; bottom: 40px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px;
+    background: rgba(16,20,28,.9); border: 1px solid rgba(255,255,255,.12); white-space: nowrap }
+  #clipping { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(10,12,16,.82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px) }
+  #clipping .box { display: grid; gap: 12px; min-width: 320px; padding: 20px 24px; border-radius: 12px; background: #1b1f27; border: 1px solid #3a404c; text-align: center }
+  #clipping progress { width: 100% }
+  #clipmenu[hidden], #clipping[hidden] { display: none } /* their display: flex/grid would otherwise beat the hidden attribute */
 </style>
 </head>
 <body>
@@ -64,12 +71,17 @@
   <select id="repo" aria-label="Demo repo"></select>
   <button id="play" aria-label="Play or pause">▶</button>
   <div id="scrubwrap"><canvas id="activity" aria-hidden="true"></canvas><input id="scrub" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
+  <span id="clipwrap">
+    <button id="clip" hidden aria-haspopup="true" aria-label="Export a video clip">🎬 Clip</button>
+    <span id="clipmenu" hidden><button data-shape="landscape">Landscape 16:9</button><button data-shape="vertical">Vertical 9:16</button></span>
+  </span>
   <select id="speed" aria-label="Playback speed">
     <option value="0.5">0.5×</option>
     <option value="1" selected>1×</option>
     <option value="2">2×</option>
   </select>
 </div>
+<div id="clipping" hidden><div class="box"><div id="clipmsg">Rendering…</div><progress id="clipbar" max="1" value="0"></progress><button id="clipcancel">Cancel</button></div></div>
 <script type="module" src="./main.ts"></script>
 </body>
 </html>
