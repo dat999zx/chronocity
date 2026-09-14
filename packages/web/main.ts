@@ -1,12 +1,15 @@
 import { layout } from '@chronocity/core/layout.ts'
 import { timeline, stepAt, sampleAt } from '@chronocity/core/timeline.ts'
 import type { Demo } from '@chronocity/core/model.ts'
-import { createCity } from './city.ts'
+import { createCity, RISE } from './city.ts'
+import { createPanel } from './panel.ts'
+import type { Selection } from './selection.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
+const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
 const hudEl = $<HTMLDivElement>('hud'), playBtn = $<HTMLButtonElement>('play')
 const scrub = $<HTMLInputElement>('scrub'), speed = $<HTMLSelectElement>('speed')
+const canvas = $<HTMLCanvasElement>('city'), hoverEl = $<HTMLDivElement>('hover')
 
 const res = await fetch('demos/knowl.json')
 if (!res.ok) {
@@ -14,24 +17,85 @@ if (!res.ok) {
   throw new Error(`demo fetch ${res.status}`)
 }
 const model: Demo = await res.json()
+const format: number = model.v // widened, so the check below doesn't narrow `model` to never
+if (format !== 2) {
+  hudEl.textContent = 'this demo was baked by an older chronocity; re-bake it'
+  throw new Error(`demo format v${format}`)
+}
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
-const canvas = $<HTMLCanvasElement>('city'), tip = $<HTMLDivElement>('tip')
 const city = createCity(canvas, model, lay, tl)
-// A commit's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
+// A step's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
 const local = (i: number) => { const [t, tz] = model.commits[i]; return new Date((t + tz * 60) * 1000).toISOString() }
+const panel = createPanel($<HTMLDivElement>('panel'), $<SVGSVGElement>('leader'), { model, lay, tl, local, select })
 
-const q = new URLSearchParams(location.search) // ?u=12.5 opens paused at that moment
+const q = new URLSearchParams(location.search) // ?u=12.5 opens paused there; ?select=<path | folder | /> opens its panel
 let u = q.has('u') ? +q.get('u')! : 0
 let playing = !q.has('u')
 let last = performance.now()
+let sel: Selection | null = null
 
-scrub.max = String(D + TAIL)
-playBtn.onclick = () => {
+function select(next: Selection | null) {
+  sel = next
+  city.select(next)
+  panel.show(next, u)
+  const url = new URL(location.href)
+  if (next) url.searchParams.set('select', next.kind === 'file' ? model.files[next.index][0] : lay.districts[next.index][5] || '/')
+  else url.searchParams.delete('select')
+  history.replaceState(null, '', url)
+}
+
+function togglePlay() {
   playing = !playing
   if (playing && u >= D + TAIL) u = 0
 }
+
+// Step to the neighbouring commit and hold just after its buildings have risen.
+function stepBy(dir: 1 | -1) {
+  const k = stepAt(tl, u) + dir
+  if (k < 0 || k >= tl.u.length) return
+  const next = k + 1 < tl.u.length ? tl.u[k + 1] - 1e-6 : Infinity
+  u = Math.max(tl.u[k], Math.min(tl.u[k] + RISE, next))
+  playing = false
+}
+
+scrub.max = String(D + TAIL)
+playBtn.onclick = togglePlay
 scrub.oninput = () => { u = +scrub.value; playing = false }
+addEventListener('keydown', e => {
+  const t = e.target
+  if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type !== 'range')) return
+  if (t instanceof HTMLButtonElement && (e.code === 'Space' || e.key === 'Enter')) return // the button handles it
+  if (e.code === 'Space') togglePlay()
+  else if (e.key === 'ArrowRight') stepBy(1)
+  else if (e.key === 'ArrowLeft') stepBy(-1)
+  else if (e.key === 'Escape') select(null)
+  else return
+  e.preventDefault()
+})
+
+let press = { x: 0, y: 0 }, dragging = false, pointer: { x: number; y: number } | null = null
+canvas.addEventListener('pointerdown', e => { press = { x: e.clientX, y: e.clientY }; dragging = true })
+addEventListener('pointerup', () => { dragging = false })
+canvas.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5) return // a drag, not a click
+  select(city.pick(e.clientX, e.clientY))
+})
+canvas.addEventListener('pointermove', e => { pointer = { x: e.clientX, y: e.clientY } })
+canvas.addEventListener('pointerleave', () => { pointer = null })
+
+function updateHover() {
+  const h = pointer && !dragging ? city.pick(pointer.x, pointer.y) : null
+  city.hover(h)
+  const label = !h ? '' : h.kind === 'file' ? model.files[h.index][0] : lay.districts[h.index][5] ? lay.districts[h.index][5] + '/' : model.repo
+  canvas.style.cursor = label ? 'pointer' : ''
+  hoverEl.hidden = !label
+  if (label && pointer) {
+    hoverEl.textContent = label
+    hoverEl.style.left = `${pointer.x + 14}px`
+    hoverEl.style.top = `${pointer.y + 14}px`
+  }
+}
 
 function hud() {
   const i = stepAt(tl, u)
@@ -56,17 +120,17 @@ function frame(now: number) {
   scrub.value = String(u)
   city.render(u)
   hud()
+  panel.update(u, sel ? city.anchor(sel) : null)
+  updateHover()
   requestAnimationFrame(frame)
 }
-let press = { x: 0, y: 0 }
-canvas.addEventListener('pointerdown', e => { press = { x: e.clientX, y: e.clientY } })
-canvas.addEventListener('pointerup', e => {
-  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5) return // a drag, not a click
-  const p = city.pick(e.clientX, e.clientY, u)
-  tip.hidden = !p
-  if (!p) return
-  tip.textContent = `${p.path}\n${p.loc.toLocaleString()} lines · since ${local(p.first).slice(0, 10)} · last touched ${local(p.last).slice(0, 10)}`
-  tip.style.left = `${e.clientX + 12}px`
-  tip.style.top = `${e.clientY + 12}px`
-})
+
+city.render(u) // once up front, so buildings have heights before a ?select= flight is planned
+const want = q.get('select')
+if (want !== null) {
+  const f = model.files.findIndex(([p]) => p === want)
+  const d = lay.districts.findIndex(dd => dd[5] === (want === '/' ? '' : want))
+  if (f >= 0) select({ kind: 'file', index: f })
+  else if (d >= 0) select({ kind: 'district', index: d })
+}
 requestAnimationFrame(frame)
