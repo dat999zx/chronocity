@@ -2,6 +2,7 @@
   "name": "chronocity",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "engines": {
     "node": ">=24"
   },

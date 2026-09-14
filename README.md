@@ -54,3 +54,7 @@ node packages/bake/bake.ts <path-to-clone> <name> <owner/repo> [ref]
 [Gource](https://gource.io) (2009) has owned "watch my project get built" for years, and CodeCity (Wettel, 2008) started code cities.
 JSCity, BabiaXR-CodeCity, code-city and [Gizual](https://gizual.com) are the neighbours.
 chronocity is the browser-only, zero-install, timelapse-first take.
+
+## License
+
+[MIT](LICENSE)
