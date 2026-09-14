@@ -56,6 +56,11 @@ const KEYS = { Escape: 27, ' ': 32, ArrowRight: 39, ArrowLeft: 37 }
 for (const s of steps) {
   if (s.init) await send('Page.addScriptToEvaluateOnNewDocument', { source: s.init }) // runs before the page's scripts on every later load
   else if (s.go) { await send('Page.navigate', { url: s.go }); await sleep(s.settle ?? 4000) }
+  else if (s.phone) { // [width, height]: a touch phone from here on
+    await send('Emulation.setDeviceMetricsOverride', { width: s.phone[0], height: s.phone[1], deviceScaleFactor: 2, mobile: true })
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+    await send('Emulation.setEmitTouchEventsForMouse', { enabled: true, configuration: 'mobile' })
+  }
   else if (s.wait) await sleep(s.wait)
   else if (s.move) await mouse('mouseMoved', ...s.move, { button: 'none' })
   else if (s.click) await click(...s.click)

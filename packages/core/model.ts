@@ -20,4 +20,5 @@ export interface Model {
 /** A baked demo: a Model plus the repo it came from (owner/name for GitHub repos). */
 export interface Demo extends Model {
   repo: string
+  about?: string // its GitHub "About" line (kept for dropped repos; gallery demos keep theirs in demos/index.json)
 }

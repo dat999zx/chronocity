@@ -2,9 +2,10 @@
 
 Watch a git repo grow into a city.
 
-**[Live demo →](https://dat999zx.github.io/chronocity/)**
+**[Live demo →](https://dat999zx.github.io/chronocity/)** with [knowl](https://github.com/dat999zx/knowl) and
+[React](https://github.com/facebook/react), or drop in your own repo.
 
-![knowl, rendered as a city at golden hour](packages/web/public/og.png)
+![knowl's whole history replayed as a city: a 15-second clip exported by chronocity itself](docs/hero.webp)
 
 Every file is a building, every folder a district, and height is lines of code. Press play and the whole history replays:
 buildings rise when files are added and collapse when they're deleted, and windows light up on the files each commit touches.
@@ -31,7 +32,8 @@ behind an "Upload N files?" prompt.
 
 A plain GitHub URL can't work without one: browsers aren't allowed to clone from GitHub, and "Download ZIP" archives
 contain no history. So pasting a URL in the card gives you the `git clone` command to run first.
-Limits: a `.git` up to 400 MB, and a full clone (not `--depth 1`).
+Limits: a `.git` up to 400 MB, and a full clone (not `--depth 1`). An 11,000-commit repo (svelte, 128 MB) replays in
+about a minute.
 
 ## Run it
 

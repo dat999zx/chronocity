@@ -13,7 +13,7 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1f27; color: #e8eaf0; font: 14px system-ui, sans-serif }
   #city { display: block; width: 100vw; height: 100vh; touch-action: none }
-  #hud { position: fixed; top: 12px; left: 16px; opacity: .9; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.7) }
+  #hud { position: fixed; top: 12px; left: 16px; right: 58px; opacity: .9; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.7) }
   #bar { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; gap: 10px; align-items: center }
   #scrubwrap { position: relative; flex: 1; height: 30px }
   #activity { position: absolute; inset: 0; width: 100%; height: 100% }
@@ -24,6 +24,8 @@
   #scrub::-moz-range-thumb { width: 3px; height: 30px; background: #fff; border: 0; border-radius: 2px }
   #ticker { position: fixed; left: 16px; right: 16px; bottom: 58px; text-align: center; font-size: 13px; opacity: .92; pointer-events: none;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0,0,0,.85) }
+  @media (max-width: 600px) { /* phones: the timeline gets its own row */
+    #bar { flex-wrap: wrap } #scrubwrap { order: -1; flex-basis: 100% } #repo { flex: 1; min-width: 0 } #ticker { bottom: 98px } }
   .tick { animation: tick .35s ease-out }
   @keyframes tick { from { opacity: 0; transform: translateY(6px) } }
   button, select { background: #2a2f38; color: inherit; border: 1px solid #3a404c; border-radius: 6px; padding: 6px 10px; font: inherit }

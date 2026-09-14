@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as git from 'isomorphic-git'
 import { walk } from '@chronocity/core/walker.ts'
+import { aboutOf } from '@chronocity/core/remote.ts'
 import type { Demo } from '@chronocity/core/model.ts'
 
 const [repoPath, name, label = name, ref = 'HEAD'] = process.argv.slice(2)
@@ -29,11 +30,12 @@ const secs = ((Date.now() - started) / 1000).toFixed(1)
 console.error(`\n${model.commits.length} steps, ${model.files.length} files, ${secs}s -> ${out}`)
 
 // demos/index.json lists the gallery. Upsert this demo, keeping order (the first entry is the default demo) and any
-// hand-written fields such as `about`, the one-liner the intro card shows.
+// other fields. `about` is the repo's GitHub "About" line, which the intro card shows; unreachable keeps the old one.
 type Entry = { name: string; repo: string; steps: number; files: number; about?: string }
 const indexFile = fileURLToPath(new URL('../web/public/demos/index.json', import.meta.url))
 const index: Entry[] = fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, 'utf8')) : []
-const entry: Entry = { name, repo: label, steps: model.commits.length, files: model.files.length }
+const about = await aboutOf(label)
+const entry: Entry = { name, repo: label, steps: model.commits.length, files: model.files.length, ...(about && { about }) }
 const at = index.findIndex(e => e.name === name)
 if (at >= 0) index[at] = { ...index[at], ...entry }
 else index.push(entry)

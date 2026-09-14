@@ -1,4 +1,5 @@
 import type { Demo, Model } from '@chronocity/core/model.ts'
+import { aboutOf } from '@chronocity/core/remote.ts'
 import type { GitFolder } from './gitfolder.ts'
 import type { WalkReply } from './walk-worker.ts'
 
@@ -23,6 +24,7 @@ export type Report = (text: string, fraction?: number) => void
 export async function renderOwn(read: (onBytes: (n: number) => void) => Promise<GitFolder>, report: Report): Promise<void> {
   report('Reading .git…', 0)
   const folder = await read(n => report(`Reading .git · ${(n / 1048576).toFixed(1)} MB…`))
+  const about = aboutOf(folder.repo) // while the history replays
   const model = await new Promise<Model>((resolve, reject) => {
     const worker = new Worker(new URL('./walk-worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<WalkReply>) => {
@@ -42,6 +44,6 @@ export async function renderOwn(read: (onBytes: (n: number) => void) => Promise<
     worker.postMessage(folder.files, [...folder.files.values()])
   })
   report('Building the city…', 1)
-  await saveLocal({ repo: folder.repo, ...model })
+  await saveLocal({ repo: folder.repo, about: await about, ...model })
   location.search = '?repo=local'
 }

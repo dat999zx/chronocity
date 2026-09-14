@@ -32,7 +32,7 @@ async function load<T>(url: string): Promise<T> {
 }
 const gallery = await load<GalleryEntry[]>('demos/index.json')
 const mine = await loadLocal().catch(() => null) // the last repo you dropped, kept in this browser only
-const localEntry: GalleryEntry | null = mine && { name: 'local', repo: mine.repo, about: 'your repo, replayed right here in your browser.' }
+const localEntry: GalleryEntry | null = mine && { name: 'local', repo: mine.repo, about: mine.about }
 const [demo, model]: [GalleryEntry, Demo] = q.get('repo') === 'local' && mine && localEntry
   ? [localEntry, mine]
   : await (async () => {
@@ -46,7 +46,7 @@ if (format !== 3) {
 }
 const openRepo = (name: string) => { location.search = `?repo=${encodeURIComponent(name)}` }
 for (const d of [...gallery, ...(localEntry ? [localEntry] : [])])
-  repoSel.append(new Option(d.name === 'local' ? `your repo (${d.repo})` : d.name, d.name, false, d.name === demo.name))
+  repoSel.append(new Option(d.name === 'local' ? d.repo : d.name, d.name, false, d.name === demo.name))
 repoSel.onchange = () => openRepo(repoSel.value)
 repoSel.hidden = repoSel.options.length < 2 // one demo and nothing dropped yet: nothing to switch between
 
@@ -187,7 +187,9 @@ function hud() {
 }
 
 function frame(now: number) {
-  if (busy) { // a clip owns the renderer; keep the clock fresh so playback doesn't jump afterwards
+  // A clip owns the renderer, or a dropped repo is replaying under the card (on a software-WebGL machine the city would
+  // take the worker's CPU: an 11k-commit repo went from ~1 min to ~13). Keep the clock fresh so playback doesn't jump.
+  if (busy || intro.replaying) {
     last = now
     requestAnimationFrame(frame)
     return

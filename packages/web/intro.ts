@@ -13,6 +13,7 @@ export interface IntroContext {
 
 export interface Intro {
   readonly isOpen: boolean
+  readonly replaying: boolean // a dropped repo's history is being replayed
   show(): void
   hide(): void
 }
@@ -36,7 +37,7 @@ export function createIntro(root: HTMLElement, ctx: IntroContext): Intro {
   const count = document.createElement('span')
   count.className = 'muted'
   count.textContent = ` ${ctx.commits.toLocaleString()} commits`
-  $<HTMLParagraphElement>('.now').replaceChildren("You're watching ", title, ctx.current.about ? `: ${ctx.current.about}` : '', count)
+  $<HTMLParagraphElement>('.now').replaceChildren("You're watching ", title, ctx.current.about ? `: ${ctx.current.about.replace(/[^.!?]$/, '$&.')}` : '', count)
   if (REPO.test(ctx.current.repo)) {
     const a = document.createElement('a')
     a.href = `https://github.com/${ctx.current.repo}`
@@ -51,7 +52,7 @@ export function createIntro(root: HTMLElement, ctx: IntroContext): Intro {
   $<HTMLDivElement>('.projects').hidden = choices.length < 2
   for (const d of choices) {
     const b = document.createElement('button')
-    b.textContent = d.name === 'local' ? `your repo (${d.repo})` : d.name
+    b.textContent = d.name === 'local' ? d.repo : d.name
     b.classList.toggle('on', d.name === ctx.current.name)
     b.onclick = () => (d.name === ctx.current.name ? hide() : ctx.open(d.name))
     $<HTMLDivElement>('.projects').append(b)
@@ -144,5 +145,5 @@ export function createIntro(root: HTMLElement, ctx: IntroContext): Intro {
 
   function show() { root.hidden = false }
   function hide() { if (!busy) root.hidden = true }
-  return { get isOpen() { return !root.hidden }, show, hide }
+  return { get isOpen() { return !root.hidden }, get replaying() { return busy }, show, hide }
 }

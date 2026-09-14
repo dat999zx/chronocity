@@ -15,3 +15,15 @@ export function githubRepoOf(config: string): string | null {
   }
   return null
 }
+
+// A GitHub repo's "About" line, for the intro card. Undefined when it isn't on GitHub, is private, has none, or the
+// API can't be reached (offline, or the 60 requests/hour unauthenticated limit).
+export async function aboutOf(repo: string): Promise<string | undefined> {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return undefined
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}`)
+    return res.ok ? ((await res.json()) as { description: string | null }).description || undefined : undefined
+  } catch {
+    return undefined
+  }
+}
