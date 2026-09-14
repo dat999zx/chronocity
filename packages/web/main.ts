@@ -145,6 +145,20 @@ function stepBy(dir: 1 | -1) {
   playing = false
 }
 
+// Drive mode: the car has its own keys (WASD / arrows / Shift); Space still plays and pauses the replay around it.
+const driveBtn = $<HTMLButtonElement>('drive'), driveHint = $<HTMLDivElement>('drivehint')
+let hintTimer = 0
+function toggleDrive(on = !city.driving) {
+  if (on) select(null)
+  city.drive(on)
+  driveBtn.textContent = on ? 'Exit drive' : '🚗 Drive'
+  driveHint.hidden = !on
+  clearTimeout(hintTimer)
+  if (on) hintTimer = setTimeout(() => { driveHint.hidden = true }, 6000) // the keys stay in the button's tooltip
+  driveBtn.blur() // so Space and Enter go to the car, not back to this button
+}
+driveBtn.onclick = () => toggleDrive()
+
 scrub.max = String(D + TAIL)
 playBtn.onclick = togglePlay
 scrub.oninput = () => { u = +scrub.value; playing = false }
@@ -152,10 +166,18 @@ addEventListener('keydown', e => {
   const t = e.target
   if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type !== 'range')) return
   if (t instanceof HTMLButtonElement && (e.code === 'Space' || e.key === 'Enter')) return // the button handles it
+  if (city.driving && e.key.startsWith('Arrow')) return // steering, not stepping commits
   if (e.code === 'Space') togglePlay()
   else if (e.key === 'ArrowRight') stepBy(1)
   else if (e.key === 'ArrowLeft') stepBy(-1)
-  else if (e.key === 'Escape') busy ? busy.abort() : intro.isOpen ? intro.hide() : !fxMenu.hidden ? (fxMenu.hidden = true) : select(null)
+  else if (e.key === 'Enter' && city.driving) select(city.ahead())
+  else if (e.key === 'Escape') {
+    if (busy) busy.abort()
+    else if (intro.isOpen) intro.hide()
+    else if (!fxMenu.hidden) fxMenu.hidden = true
+    else if (sel) select(null)
+    else if (city.driving) toggleDrive(false)
+  }
   else return
   e.preventDefault()
 })
@@ -170,16 +192,18 @@ canvas.addEventListener('pointerup', e => {
 canvas.addEventListener('pointermove', e => { pointer = { x: e.clientX, y: e.clientY } })
 canvas.addEventListener('pointerleave', () => { pointer = null })
 
+// The label under the cursor, or while driving, the name of the building in front of the car, pinned to its roof.
 function updateHover() {
-  const h = pointer && !dragging ? city.pick(pointer.x, pointer.y) : null
+  const h = city.driving ? city.ahead() : pointer && !dragging ? city.pick(pointer.x, pointer.y) : null
   city.hover(h)
   const label = !h ? '' : h.kind === 'file' ? model.files[h.index][0] : lay.districts[h.index][5] ? lay.districts[h.index][5] + '/' : model.repo
-  canvas.style.cursor = label ? 'pointer' : ''
-  hoverEl.hidden = !label
-  if (label && pointer) {
+  const at = city.driving ? h && city.anchor(h) : pointer
+  canvas.style.cursor = label && !city.driving ? 'pointer' : ''
+  hoverEl.hidden = !label || !at
+  if (label && at) {
     hoverEl.textContent = label
-    hoverEl.style.left = `${pointer.x + 14}px`
-    hoverEl.style.top = `${pointer.y + 14}px`
+    hoverEl.style.left = `${at.x + 14}px`
+    hoverEl.style.top = `${at.y + 14}px`
   }
 }
 

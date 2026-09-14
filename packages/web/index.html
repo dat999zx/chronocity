@@ -66,7 +66,11 @@
   #clipping .box { display: grid; gap: 12px; min-width: 320px; padding: 20px 24px; border-radius: 12px; background: #1b1f27; border: 1px solid #3a404c; text-align: center }
   #clipping progress { width: 100% }
   #clipmenu[hidden], #clipping[hidden] { display: none } /* their display: flex/grid would otherwise beat the hidden attribute */
-  .bare #hud, .bare #bar, .bare #ticker, .bare #about, .bare #fx, .bare #fxmenu { display: none }
+  .bare #hud, .bare #bar, .bare #ticker, .bare #about, .bare #fx, .bare #fxmenu, .bare #drivehint { display: none }
+  #drivehint { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; font-size: 12px;
+    white-space: nowrap; background: rgba(16,20,28,.6); border: 1px solid rgba(255,255,255,.14); pointer-events: none }
+  #drivehint[hidden] { display: none }
+  @media (pointer: coarse) { #drive { display: none } } /* no keyboard, no car */
   #about, #fx { position: fixed; top: 10px; right: 12px; width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 17px; cursor: pointer;
     background: rgba(16,20,28,.6); border: 1px solid rgba(255,255,255,.18); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px) }
   #fx { right: 54px }
@@ -117,9 +121,11 @@
 <div id="panel" hidden></div>
 <div id="hover" hidden></div>
 <div id="ticker"></div>
+<div id="drivehint" hidden>WASD or arrows to drive · Shift to boost · Enter opens the building ahead · Esc to get out</div>
 <div id="bar">
   <select id="repo" aria-label="Demo repo"></select>
   <button id="play" aria-label="Play or pause">▶</button>
+  <button id="drive" title="Drive through the city: WASD or arrows, Shift to boost, Enter to inspect, Esc to exit">🚗 Drive</button>
   <div id="scrubwrap"><canvas id="activity" aria-hidden="true"></canvas><input id="scrub" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <span id="clipwrap">
     <button id="clip" hidden aria-haspopup="true" aria-label="Export a video clip">🎬 Clip</button>

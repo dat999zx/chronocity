@@ -51,7 +51,7 @@ await send('Runtime.enable')
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false })
 const mouse = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra })
 const click = async (x, y) => { await mouse('mouseMoved', x, y, { button: 'none' }); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y) }
-const KEYS = { Escape: 27, ' ': 32, ArrowRight: 39, ArrowLeft: 37 }
+const KEYS = { Escape: 27, ' ': 32, ArrowRight: 39, ArrowLeft: 37, Enter: 13 }
 
 for (const s of steps) {
   if (s.init) await send('Page.addScriptToEvaluateOnNewDocument', { source: s.init }) // runs before the page's scripts on every later load
@@ -75,6 +75,14 @@ for (const s of steps) {
     const code = s.key === ' ' ? 'Space' : s.key
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: s.key, code, windowsVirtualKeyCode: KEYS[s.key] })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: s.key, code })
+  }
+  else if (s.hold) { // hold key codes down together for s.ms: { "hold": ["KeyW", "KeyA"], "ms": 1500 }
+    const codes = [].concat(s.hold)
+    const ev = code => ({ key: code.startsWith('Key') ? code.slice(3).toLowerCase() : code, code,
+      windowsVirtualKeyCode: code.startsWith('Key') ? code.charCodeAt(3) : { ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, ShiftLeft: 16 }[code] })
+    for (const c of codes) await send('Input.dispatchKeyEvent', { type: 'keyDown', ...ev(c) })
+    await sleep(s.ms ?? 1000)
+    for (const c of codes) await send('Input.dispatchKeyEvent', { type: 'keyUp', ...ev(c) })
   }
   else if (s.setFiles) {
     // Pick files (or, for <input webkitdirectory>, a whole folder) on a file input, as if chosen in the dialog.

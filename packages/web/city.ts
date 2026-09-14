@@ -15,6 +15,7 @@ import { realTime, scaffolding, weathering } from '@chronocity/core/aging.ts'
 import { createRain } from './rain.ts'
 import { autoCamera, extents } from './camera.ts'
 import type { Effects } from './effects.ts'
+import { createDrive } from './drive.ts'
 
 export const HEIGHT_K = 0.25  // world units per sqrt(LOC) (tuning knob)
 export const MAX_H = 24       // tallest possible building (tuning knob)
@@ -58,6 +59,11 @@ export interface City {
   renderClip(u: number, w: number, h: number): HTMLCanvasElement
   /** Back to the on-screen size and interactive state after a clip. */
   endClip(): void
+  /** Drive a car through the city (chase camera), or hand the camera back to the auto orbit. */
+  drive(on: boolean): void
+  readonly driving: boolean
+  /** While driving: the building just in front of the car. */
+  ahead(): Selection | null
 }
 
 const AFTERNOON: SkyState = { hour: 15, r: 0.9 } // the sky with day & night switched off: steady daylight, fixed shadows
@@ -156,6 +162,21 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   group.add(scaffold)
   const rain = createRain(S)
   group.add(rain.object)
+  const car = createDrive(group, camera, files, lay.districts, S)
+  function setDrive(on: boolean) {
+    if (on === car.active) return
+    if (on) {
+      fly = null
+      controls.enabled = false
+      spotTarget = 0
+      car.enter()
+    } else {
+      car.exit()
+      controls.enabled = true
+      controls.target.set(0, 0, 0)
+      flyTo(autoPose, 'auto')
+    }
+  }
   const ext = extents(model.files, lay, model.commits.length)
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), v = new THREE.Vector3()
   let spotTarget = 0, lastNow = performance.now(), clipping = false
@@ -215,7 +236,9 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   // Everything after the camera: sky, weather, buildings, windows, bloom. Pure in u (and the effect switches).
   function drawScene(u: number) {
     const wet = fx.rain ? sig.rain(u) : 0
-    night.value = sky.update(fx.daynight ? sig.sky(u) : AFTERNOON, fx.fog ? sig.fog(u) : 0, wet, camera.position.length()).night
+    // Haze scales with how far the camera is from the city; down on its streets, use the city's size instead.
+    const viewDist = car.active ? S : camera.position.length()
+    night.value = sky.update(fx.daynight ? sig.sky(u) : AFTERNOON, fx.fog ? sig.fog(u) : 0, wet, viewDist).night
     rain.update(u, wet)
     sky.shadows(fx.shadows)
     bloom.enabled = fx.bloom
@@ -246,7 +269,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     render(u) {
       const now = performance.now(), dt = Math.min(0.1, (now - lastNow) / 1000)
       lastNow = now
-      if (fly) {
+      if (car.active) car.update(dt) // real time: the car ignores playback
+      else if (fly) {
         const p = Math.min(1, (now - fly.t0) / FLY_MS), e = easeInOut(p), to = fly.to(u)
         camera.position.lerpVectors(fly.from.pos, to.pos, e)
         controls.target.lerpVectors(fly.from.target, to.target, e)
@@ -267,6 +291,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     renderClip(u, w, h) {
       if (!clipping) {
         // First clip frame: clip size at pixel ratio 1, auto camera, no spotlight or hover.
+        setDrive(false)
         clipping = true
         mode = 'auto'
         fly = null
@@ -307,6 +332,12 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     hover(sel) {
       hover.value = sel?.kind === 'file' ? sel.index : -1
     },
+    drive: setDrive,
+    get driving() { return car.active },
+    ahead() {
+      const i = car.active ? car.ahead() : -1
+      return i < 0 ? null : { kind: 'file', index: i }
+    },
     select(sel) {
       const arr = inSel.array as Float32Array
       if (!sel || isRoot(sel)) {
@@ -321,9 +352,11 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
           const prefix = lay.districts[sel.index][5] + '/'
           files.forEach((f, i) => { arr[i] = f.path.startsWith(prefix) ? 1 : 0 })
         }
-        spotTarget = 1
-        const pose = focusPose(sel)
-        flyTo(() => pose, 'focus')
+        if (!car.active) { // while driving, the card opens without dimming the city or taking the camera
+          spotTarget = 1
+          const pose = focusPose(sel)
+          flyTo(() => pose, 'focus')
+        }
       }
       inSel.needsUpdate = true
     },
