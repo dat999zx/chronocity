@@ -11,7 +11,8 @@
     "dev": "vite packages/web",
     "build": "vite build packages/web --base ./",
     "preview": "vite preview packages/web --base ./",
-    "bake": "node packages/bake/bake.ts"
+    "bake": "node packages/bake/bake.ts",
+    "drive": "node scripts/drive.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
