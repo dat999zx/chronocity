@@ -1,9 +1,11 @@
 import { layout } from '@chronocity/core/layout.ts'
-import { timeline, stepAt, sampleAt } from '@chronocity/core/timeline.ts'
+import { timeline, stepAt, sampleAt, codeChurn } from '@chronocity/core/timeline.ts'
 import type { Demo } from '@chronocity/core/model.ts'
 import { createCity, RISE } from './city.ts'
 import { createPanel } from './panel.ts'
 import type { Selection } from './selection.ts'
+import { createTicker } from './ticker.ts'
+import { createActivity } from './activity.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
 const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
@@ -28,6 +30,9 @@ const city = createCity(canvas, model, lay, tl)
 // A step's author-local time as an ISO string ("2026-09-10T23:12:00.000Z" = 23:12 where the author was).
 const local = (i: number) => { const [t, tz] = model.commits[i]; return new Date((t + tz * 60) * 1000).toISOString() }
 const panel = createPanel($<HTMLDivElement>('panel'), $<SVGSVGElement>('leader'), { model, lay, tl, local, select })
+const churn = codeChurn(model)
+const ticker = createTicker($<HTMLDivElement>('ticker'), model, tl, churn, local)
+const bars = createActivity($<HTMLCanvasElement>('activity'), churn, tl, D + TAIL)
 
 const q = new URLSearchParams(location.search) // ?u=12.5 opens paused there; ?select=<path | folder | /> opens its panel
 let u = q.has('u') ? +q.get('u')! : 0
@@ -120,6 +125,8 @@ function frame(now: number) {
   scrub.value = String(u)
   city.render(u)
   hud()
+  ticker.update(u, playing)
+  bars.draw(u)
   panel.update(u, sel ? city.anchor(sel) : null)
   updateHover()
   requestAnimationFrame(frame)
