@@ -3,7 +3,8 @@ import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { FileHistory } from '@chronocity/core/model.ts'
 
 export const ORBIT = 0.05 // radians per playback second (tuning knob)
-export const FRAME = 2.6  // camera distance per unit of built-up radius; ~1 / sin(fov / 2) for a 45° lens
+export const FRAME = 2.0  // camera distance per unit of built-up radius (tuning knob)
+export const ELEV = 0.55  // camera height per unit of distance: ~29° down, low enough to read as a skyline
 
 // Radius of the built-up area at each step: the farthest lot (from the centre) of any file that has appeared.
 export function extents(files: FileHistory[], lay: CityLayout, steps: number): Float64Array {
@@ -23,5 +24,5 @@ export function autoCamera(u: number, tl: Timeline, ext: Float64Array, S: number
   for (let k = 0; k < 8; k++) r += ext[Math.max(0, stepAt(tl, u - k * 0.25))] / 8
   const dist = Math.max(S * 0.25, r) * FRAME
   const a = Math.PI / 4 + u * ORBIT
-  return { x: Math.sin(a) * dist, y: dist * 0.75, z: Math.cos(a) * dist }
+  return { x: Math.sin(a) * dist, y: dist * ELEV, z: Math.cos(a) * dist }
 }

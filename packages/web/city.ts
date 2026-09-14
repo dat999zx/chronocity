@@ -18,12 +18,19 @@ export const MAX_H = 24       // tallest possible building (tuning knob)
 export const DATA_MAX_H = 2.5 // data files (json, csv, ...) stay low: warehouses, not towers
 export const RISE = 0.6       // playback seconds for a height change to ease in
 export const GLOW = 1.5       // playback seconds a touched file's windows stay lit
-const MUTE = 0.25             // how far language colors are pulled toward grey (tuning knob)
+const MUTE = 0.15             // how far language colors are pulled toward grey (tuning knob)
+const JITTER = 0.1            // per-building lightness spread, so a one-language city isn't one flat color
 const GREY = new THREE.Color(0xb8bcc4)
-const GROUND = new THREE.Color(0x1c2028) // root plate: asphalt
-const PLATE = new THREE.Color(0x4a5160)  // folder plates three levels deep; shallower levels blend toward GROUND
+const GROUND = new THREE.Color(0x2a2e35) // root plate: asphalt
+const PLATE = new THREE.Color(0x5a6372)  // folder plates three levels deep; shallower levels blend toward GROUND
 
 const easeOut = (p: number) => 1 - (1 - p) ** 3
+// Stable 0..1 hash of a path (FNV-1a), for per-building variation that never changes between frames.
+const hash01 = (s: string) => {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return (h >>> 0) / 4294967296
+}
 
 interface Building { path: string; s: Sample[]; x: number; z: number; w: number; d: number; maxH: number }
 export interface Picked { path: string; loc: number; first: number; last: number } // first/last: step indices
@@ -33,6 +40,8 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   const scene = new THREE.Scene()
 
   const S = lay.size
@@ -67,6 +76,12 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const box = new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5) // origin at the min corner, base on y=0
   const m = new THREE.Matrix4(), color = new THREE.Color()
 
+  // A plain that runs out to the horizon, where the fog blends it into the sky: the city stands somewhere.
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(S * 14, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 1 }))
+  ground.position.y = -0.02
+  ground.receiveShadow = true
+  scene.add(ground)
+
   // Plates: the ground is dark asphalt and each folder level is a little lighter, so streets read as gaps.
   const plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 1 }), lay.districts.length)
   lay.districts.forEach(([x, z, w, d, depth], i) => {
@@ -74,6 +89,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     plates.setMatrixAt(i, m)
     plates.setColorAt(i, color.copy(GROUND).lerp(PLATE, Math.min(1, depth / 3)))
   })
+  plates.receiveShadow = true
   group.add(plates)
 
   const files: Building[] = model.files.map(([path, s]) => {
@@ -86,7 +102,9 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const geo = box.clone()
   geo.setAttribute('aGlow', glow)
   const mesh = new THREE.InstancedMesh(geo, createBuildingMaterial(night), files.length)
-  files.forEach((f, i) => mesh.setColorAt(i, color.setHex(langOf(f.path).color).lerp(GREY, MUTE)))
+  files.forEach((f, i) =>
+    mesh.setColorAt(i, color.setHex(langOf(f.path).color).lerp(GREY, MUTE).offsetHSL(0, 0, (hash01(f.path) - 0.5) * JITTER)))
+  mesh.castShadow = mesh.receiveShadow = true
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.frustumCulled = false // instances change every frame; a cached bounding sphere would go stale
   group.add(mesh)
@@ -115,8 +133,15 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
 
   return {
     render(u) {
-      night.value = sky.update(sig.sky(u), sig.fog(u))
-      rain.update(u, sig.rain(u))
+      if (manual) controls.update()
+      else {
+        const p = autoCamera(u, tl, ext, S)
+        camera.position.set(p.x, p.y, p.z)
+        camera.lookAt(0, 0, 0)
+      }
+      const wet = sig.rain(u)
+      night.value = sky.update(sig.sky(u), sig.fog(u), wet, camera.position.length()).night
+      rain.update(u, wet)
       for (let i = 0; i < files.length; i++) {
         const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
         glow.setX(i, k < 0 ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
@@ -126,12 +151,6 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
       }
       mesh.instanceMatrix.needsUpdate = true
       glow.needsUpdate = true
-      if (manual) controls.update()
-      else {
-        const p = autoCamera(u, tl, ext, S)
-        camera.position.set(p.x, p.y, p.z)
-        camera.lookAt(0, 0, 0)
-      }
       bloom.strength = 0.15 + 0.6 * night.value
       composer.render()
     },

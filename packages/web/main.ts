@@ -40,8 +40,8 @@ function hud() {
     const k = sampleAt(tl, s, u)
     if (k >= 0 && s[k][1] > 0) { files++; loc += s[k][1] }
   }
-  const iso = local(Math.max(i, 0))
-  const date = `${iso.slice(0, 10)} ${iso.slice(11, 16)}` // the author's local date and time
+  // Date only: the sky shows the recent commits' average hour, so a single commit's clock time would contradict it.
+  const date = local(Math.max(i, 0)).slice(0, 10)
   hudEl.textContent = `${model.repo} · ${date} · commit ${i + 1}/${model.commits.length} · ${files} files · ${loc.toLocaleString()} lines`
 }
 
