@@ -162,7 +162,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   group.add(scaffold)
   const rain = createRain(S)
   group.add(rain.object)
-  const car = createDrive(group, camera, files, lay.districts, S)
+  const car = createDrive(group, camera, files, lay.districts, S, night)
   function setDrive(on: boolean) {
     if (on === car.active) return
     if (on) {

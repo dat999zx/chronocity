@@ -1,17 +1,25 @@
 import * as THREE from 'three'
 import type { District } from '@chronocity/core/layout.ts'
+import { createCar, CAR_W } from './car.ts'
+import { createStreetLife } from './streetlife.ts'
+import { createParticles } from './particles.ts'
 
-// Drive mode: a little car on the city's streets with a chase camera. It moves on real frame time, never playback
-// time, so it drives the same whether the replay is playing or paused. Standing buildings block it (it slides along
-// their walls) and it rides up onto the district plates.
+// Drive mode: a car on the city's streets with a chase camera. It moves on real frame time, never playback time, so it
+// drives the same whether the replay is playing or paused. Standing buildings block it (it slides along their walls),
+// it rolls up onto curbs and plates, and a building that rises up under it flings it into the air.
 
 export const SPEED = 5      // world units per second at full throttle (tuning knob)
 export const BOOST = 2.5    // Shift multiplies the top speed
 const REVERSE = 0.4         // reverse top speed, as a share of SPEED
 const TURN = 2.2            // radians per second at full speed and full lock
-const R = 0.22              // the car's collision radius
+const R = CAR_W / 2         // radius of each of the two collision circles...
+const AXLE = 0.2            // ...centred this far ahead of and behind the car's middle
+const STEP = 0.08           // the highest ledge the car rolls up onto: curbs and plates, never a roof
+const GRAVITY = 9           // world units/s² (a toy's gravity: the real thing is floaty at this scale)
+const FLING = 4             // upward speed when a building rises up under the car...
+const KICK = 2.5            // ...and sideways, away from the building's middle
 const CELL = 2              // spatial grid cell for building lookups
-const CHASE = new THREE.Vector3(0, 1.0, -2.3) // camera offset behind and above the car, in the car's frame
+const CHASE = new THREE.Vector3(0, 1.25, -2.9) // camera offset behind and above the car, in the car's frame
 
 export interface Lot { x: number; z: number; w: number; d: number; h: number } // a building's footprint; h > 0 = standing
 
@@ -23,10 +31,18 @@ export interface Drive {
   ahead(): number          // the standing building just in front of the car, or -1
 }
 
-export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera, lots: Lot[], districts: District[], S: number): Drive {
-  const car = carModel()
-  car.visible = false
-  group.add(car)
+export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera, lots: Lot[], districts: District[], S: number,
+  night: { value: number }): Drive {
+  const car = createCar()
+  car.object.visible = false
+  group.add(car.object, ...car.lights) // the lights stay in the scene for good (dark unless driving at night)
+  const life = createStreetLife(districts)
+  const smoke = createParticles({ max: 400, color: 0xc4c8d0, gravity: -0.25, drag: 1.6, grow: 2.5, alpha: 0.45 })   // exhaust, tyres
+  const dust = createParticles({ max: 200, color: 0x9d9181, gravity: 0.6, drag: 2.2, grow: 1.8, alpha: 0.6 })       // landings
+  const sparks = createParticles({ max: 200, color: 0xffb454, additive: true, gravity: 7, drag: 0.6, grow: -0.7, alpha: 1 })
+  const extras = [life.object, smoke.object, dust.object, sparks.object]
+  for (const o of extras) { o.visible = false; group.add(o) }
+  let puff = 0 // exhaust owed, in particles
 
   // Buildings bucketed by grid cell, so a frame only tests the few around the car.
   const grid = new Map<number, number[]>()
@@ -38,15 +54,18 @@ export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera,
         grid.get(k)?.push(i) ?? grid.set(k, [i])
       }
   })
-  function near(x: number, z: number, fn: (i: number) => void) {
+  function near(x: number, z: number, fn: (b: Lot, i: number) => void) {
     const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL)
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) grid.get(key(cx + dx, cz + dz))?.forEach(fn)
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) grid.get(key(cx + dx, cz + dz))?.forEach(i => fn(lots[i], i))
   }
-  // Top of the deepest district plate under a point (plates stack 0.05 per folder level).
-  function ground(x: number, z: number): number {
+  const within = (b: Lot, x: number, z: number) => x >= b.x && x <= b.x + b.w && z >= b.z && z <= b.z + b.d
+  const blocks = (b: Lot) => b.h > 0.05 && b.h > pos.y + STEP // taller than what the car can roll onto
+
+  // What the car rests on at (x, z): the deepest district plate (0.05 a folder level), or a roof it's already up on.
+  function support(x: number, z: number): number {
     let top = 0
-    for (const [dx, dz, w, d, depth] of districts)
-      if (x >= dx && x <= dx + w && z >= dz && z <= dz + d) top = Math.max(top, depth * 0.05 + 0.05)
+    for (const [dx, dz, w, d, depth] of districts) if (x >= dx && x <= dx + w && z >= dz && z <= dz + d) top = Math.max(top, depth * 0.05 + 0.05)
+    near(x, z, b => { if (b.h > 0.05 && b.h <= pos.y + STEP && within(b, x, z)) top = Math.max(top, b.h) })
     return top
   }
 
@@ -60,38 +79,51 @@ export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera,
   addEventListener('blur', () => keys.clear())
   const down = (...codes: string[]) => codes.some(c => keys.has(c))
 
-  let active = false, v = 0, heading = Math.PI
+  let active = false, v = 0, heading = Math.PI, vy = 0, kx = 0, kz = 0, spin = 0, pitch = 0
   const pos = new THREE.Vector3(), look = new THREE.Vector3(), world = new THREE.Vector3(), off = new THREE.Vector3()
 
-  // Push the car out of any standing building: the closest point on its footprint, then out along that normal (a slide).
-  function collide() {
-    near(pos.x, pos.z, i => {
-      const b = lots[i]
-      if (b.h < 0.05) return
-      const cx = Math.max(b.x, Math.min(pos.x, b.x + b.w)), cz = Math.max(b.z, Math.min(pos.z, b.z + b.d))
-      let nx = pos.x - cx, nz = pos.z - cz
-      const dist = Math.hypot(nx, nz)
-      if (dist >= R) return
-      if (dist < 1e-6) { // centre inside the footprint: leave by the nearest side
-        const sides = [pos.x - b.x, b.x + b.w - pos.x, pos.z - b.z, b.z + b.d - pos.z], m = Math.min(...sides)
-        ;[nx, nz] = [[-1, 0], [1, 0], [0, -1], [0, 1]][sides.indexOf(m)]
-        pos.x += nx * (m + R)
-        pos.z += nz * (m + R)
-      } else {
-        pos.x += (nx / dist) * (R - dist)
-        pos.z += (nz / dist) * (R - dist)
-      }
-      v *= 0.97 // scraping a wall costs a little speed
-    })
+  // A building rose up under the car (its middle, nose or tail is inside one it can't be on): ride the roof up and
+  // get flung off it, away from the building's middle.
+  function fling() {
+    for (const k of [0, AXLE, -AXLE]) {
+      const x = pos.x + Math.sin(heading) * k, z = pos.z + Math.cos(heading) * k
+      let hit: Lot | null = null
+      near(x, z, b => { if (!hit && blocks(b) && within(b, x, z)) hit = b })
+      const b = hit as Lot | null
+      if (!b) continue
+      const ax = pos.x - (b.x + b.w / 2), az = pos.z - (b.z + b.d / 2), len = Math.hypot(ax, az) || 1
+      pos.y = b.h
+      vy = FLING
+      kx = (ax / len) * KICK
+      kz = (az / len) * KICK
+      spin = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 2)
+      dust.emit(30, pos.x, pos.y, pos.z, 0, 0.6, 0, 1.2, 1.1, 0.14) // the roof bursts up under it
+      sparks.emit(20, pos.x, pos.y + 0.1, pos.z, kx * 0.4, 2, kz * 0.4, 1.8, 0.6, 0.05)
+      return
+    }
   }
 
-  // Is (x, y, z) inside a standing building?
+  // Push the car's two circles out of any building taller than it can climb: out along the normal, so it slides.
+  function collide() {
+    for (const k of [AXLE, -AXLE]) {
+      const x = pos.x + Math.sin(heading) * k, z = pos.z + Math.cos(heading) * k
+      near(x, z, b => {
+        if (!blocks(b)) return
+        const nx = x - Math.max(b.x, Math.min(x, b.x + b.w)), nz = z - Math.max(b.z, Math.min(z, b.z + b.d))
+        const dist = Math.hypot(nx, nz)
+        if (dist >= R || dist < 1e-6) return // inside is fling()'s business
+        pos.x += (nx / dist) * (R - dist)
+        pos.z += (nz / dist) * (R - dist)
+        v *= 0.97 // scraping a wall costs a little speed
+        if (Math.abs(v) > 1 && Math.random() < 0.5) // sparks off the wall where it touches
+          sparks.emit(2, x - (nx / dist) * R, pos.y + 0.12, z - (nz / dist) * R, (nx / dist) * 1.2, 0.8, (nz / dist) * 1.2, 0.8, 0.45, 0.045)
+      })
+    }
+  }
+
   function inside(x: number, y: number, z: number): boolean {
     let hit = false
-    near(x, z, i => {
-      const b = lots[i]
-      hit ||= b.h > y && x > b.x - 0.05 && x < b.x + b.w + 0.05 && z > b.z - 0.05 && z < b.z + b.d + 0.05
-    })
+    near(x, z, b => { hit ||= b.h > y && x > b.x - 0.05 && x < b.x + b.w + 0.05 && z > b.z - 0.05 && z < b.z + b.d + 0.05 })
     return hit
   }
 
@@ -106,7 +138,7 @@ export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera,
     }
     off.multiplyScalar(t).add(world)
     camera.position.lerp(off, dt < 0 ? 1 : 1 - Math.exp(-dt * 6))
-    look.set(Math.sin(heading) * 1.5, 0.35, Math.cos(heading) * 1.5).add(world)
+    look.set(Math.sin(heading) * 1.6, 0.4, Math.cos(heading) * 1.6).add(world)
     camera.lookAt(look)
   }
 
@@ -114,48 +146,80 @@ export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera,
     get active() { return active },
     enter() {
       active = true
-      v = 0
-      heading = Math.PI // facing -z: into the city from its south edge
-      pos.set(S / 2, 0, S + 1.2)
-      car.visible = true
+      v = vy = kx = kz = spin = pitch = 0
+      heading = Math.PI // facing -z: into the city from just off its south edge
+      pos.set(S / 2, 0, S + 1)
+      car.object.visible = true
+      for (const o of extras) o.visible = true
+      car.place(pos.x, pos.y, pos.z, heading, 0)
       chase(-1) // snap the camera behind the car
     },
     exit() {
       active = false
-      car.visible = false
+      car.object.visible = false
+      for (const o of extras) o.visible = false
+      car.update(0, 0, 0, false, 0, false) // lights off
       keys.clear()
     },
     update(dt) {
-      const top = SPEED * (down('ShiftLeft', 'ShiftRight') ? BOOST : 1)
-      const throttle = +down('KeyW', 'ArrowUp') - +down('KeyS', 'ArrowDown')
+      const sup = support(pos.x, pos.z), airborne = vy !== 0 || pos.y > sup + 1e-3
+      const throttle = airborne ? 0 : +down('KeyW', 'ArrowUp') - +down('KeyS', 'ArrowDown')
+      const steer = airborne ? 0 : +down('KeyA', 'ArrowLeft') - +down('KeyD', 'ArrowRight')
+      const top = SPEED * (down('ShiftLeft', 'ShiftRight') ? BOOST : 1), braking = throttle < 0 && v > 0.1
       if (throttle > 0) v += (top - v) * (1 - Math.exp(-dt * 2.2))
-      else if (throttle < 0) v += (v > 0.1 ? -v * 4 * dt - 6 * dt : (-top * REVERSE - v) * (1 - Math.exp(-dt * 3)))
-      else v *= Math.exp(-dt * 1.8)
-      const steer = +down('KeyA', 'ArrowLeft') - +down('KeyD', 'ArrowRight')
-      heading += steer * TURN * dt * Math.max(-1, Math.min(1, v / SPEED * 2))
+      else if (braking) v -= v * 4 * dt + 6 * dt
+      else if (throttle < 0) v += (-top * REVERSE - v) * (1 - Math.exp(-dt * 3))
+      else if (!airborne) v *= Math.exp(-dt * 1.8)
+      heading += steer * TURN * dt * Math.max(-1, Math.min(1, (v / SPEED) * 2)) + (airborne ? spin * dt : 0)
 
       // Move in steps shorter than the car, so a slow frame (dt up to 0.1 s, 1.25 units at full boost) can't tunnel
       // through a thin building.
-      const travel = Math.abs(v * dt), n = Math.max(1, Math.ceil(travel / (R * 0.5)))
+      const dx = (Math.sin(heading) * v + kx) * dt, dz = (Math.cos(heading) * v + kz) * dt
+      const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / (R * 0.5)))
       for (let j = 0; j < n; j++) {
-        pos.x += (Math.sin(heading) * v * dt) / n
-        pos.z += (Math.cos(heading) * v * dt) / n
+        pos.x += dx / n
+        pos.z += dz / n
+        fling()
         collide()
       }
       pos.x = Math.max(-S * 0.5, Math.min(S * 1.5, pos.x))
       pos.z = Math.max(-S * 0.5, Math.min(S * 1.5, pos.z))
-      pos.y += (ground(pos.x, pos.z) - pos.y) * (1 - Math.exp(-dt * 12))
 
-      car.position.copy(pos)
-      car.rotation.y = heading
-      for (const w of car.userData.wheels as THREE.Object3D[]) w.rotation.x += (v * dt) / 0.07
+      // Up and down: fall under gravity until something holds the car up; roll up curbs and plates.
+      const ground = support(pos.x, pos.z)
+      if (vy !== 0 || pos.y > ground + 1e-3) {
+        vy -= GRAVITY * dt
+        pos.y += vy * dt
+        if (pos.y <= ground) { // landed: a dust cloud the harder it hit
+          if (vy < -1.5) dust.emit(Math.min(40, Math.round(-vy * 6)), pos.x, ground + 0.03, pos.z, 0, 0.3, 0, 1.1, 1.2, 0.13)
+          pos.y = ground
+          vy = kx = kz = spin = 0
+        }
+      } else pos.y += (ground - pos.y) * (1 - Math.exp(-dt * 14))
+
+      // Exhaust from the tailpipe (thick on boost), tyre smoke from the back wheels when braking hard or turning fast.
+      const sx = Math.sin(heading), cz = Math.cos(heading), boost = down('ShiftLeft', 'ShiftRight') && throttle > 0
+      puff += dt * (airborne ? 0 : throttle > 0 ? (boost ? 50 : 16) : 3)
+      for (; puff >= 1; puff--)
+        smoke.emit(1, pos.x - sx * 0.44 + cz * 0.1, pos.y + 0.09, pos.z - cz * 0.44 - sx * 0.1, -sx * 0.5, 0.15, -cz * 0.5, 0.12, boost ? 1.3 : 0.9, boost ? 0.11 : 0.07)
+      if (!airborne && ((braking && v > 2) || (steer !== 0 && Math.abs(v) > SPEED * 0.9)))
+        for (const s of [-1, 1]) smoke.emit(1, pos.x - sx * 0.25 + cz * s * 0.19, pos.y + 0.04, pos.z - cz * 0.25 - sx * s * 0.19, 0, 0.2, 0, 0.25, 1.4, 0.12)
+      const scale = (innerHeight * Math.min(devicePixelRatio, 2)) / (2 * Math.tan((camera.fov * Math.PI) / 360))
+      const lit = 1 - 0.75 * night.value // smoke and dust are lit by the sky; sparks make their own light
+      smoke.update(dt, scale, lit)
+      dust.update(dt, scale, lit)
+      sparks.update(dt, scale)
+      pitch += ((vy === 0 ? 0 : Math.max(-0.6, Math.min(0.6, -vy * 0.12))) - pitch) * (1 - Math.exp(-dt * 8)) // nose up on the way up
+
+      car.place(pos.x, pos.y, pos.z, heading, pitch)
+      car.update(dt, v, steer, braking, night.value, true)
+      life.update(dt, pos.x, pos.z)
       chase(dt)
     },
     ahead() {
-      const px = pos.x + Math.sin(heading) * 1.1, pz = pos.z + Math.cos(heading) * 1.1
-      let best = -1, bestD = 0.9
-      near(px, pz, i => {
-        const b = lots[i]
+      const px = pos.x + Math.sin(heading) * 1.3, pz = pos.z + Math.cos(heading) * 1.3
+      let best = -1, bestD = 1
+      near(px, pz, (b, i) => {
         if (b.h < 0.05) return
         const d = Math.hypot(px - Math.max(b.x, Math.min(px, b.x + b.w)), pz - Math.max(b.z, Math.min(pz, b.z + b.d)))
         if (d < bestD) { bestD = d; best = i }
@@ -163,32 +227,4 @@ export function createDrive(group: THREE.Group, camera: THREE.PerspectiveCamera,
       return best
     },
   }
-}
-
-// A toy car, ~0.5 long, nose along +z: body, glass cabin, four wheels, head- and taillights that glow at night.
-function carModel(): THREE.Group {
-  const car = new THREE.Group()
-  const mat = (color: number, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.5, ...extra })
-  const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
-    mesh.position.set(x, y, z)
-    mesh.castShadow = true
-    car.add(mesh)
-    return mesh
-  }
-  box(0.28, 0.1, 0.52, mat(0xd8452f, { metalness: 0.3, roughness: 0.35 }), 0, 0.1, 0)
-  box(0.24, 0.09, 0.26, mat(0x1d2430, { metalness: 0.6, roughness: 0.15 }), 0, 0.19, -0.03)
-  const head = mat(0xfff2c0, { emissive: 0xfff2c0, emissiveIntensity: 2 }), tail = mat(0xff3020, { emissive: 0xff2010, emissiveIntensity: 1.5 })
-  for (const x of [-0.09, 0.09]) {
-    box(0.06, 0.03, 0.01, head, x, 0.11, 0.261)
-    box(0.06, 0.03, 0.01, tail, x, 0.11, -0.261)
-  }
-  const wheelGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.05, 12).rotateZ(Math.PI / 2), tyre = mat(0x15171b, { roughness: 0.9 })
-  car.userData.wheels = [-0.15, 0.15].flatMap(z => [-0.14, 0.14].map(x => {
-    const w = new THREE.Mesh(wheelGeo, tyre)
-    w.position.set(x, 0.07, z)
-    car.add(w)
-    return w
-  }))
-  return car
 }

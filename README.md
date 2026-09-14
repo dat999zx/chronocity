@@ -25,7 +25,8 @@ and the real diff from GitHub. Links like `?select=src/cli/program.ts` open stra
 Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> step one commit, <kbd>Esc</kbd> close.
 
 **🚗 Drive** puts you in a car on the city's streets (desktop): <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows,
-<kbd>Shift</kbd> to boost, <kbd>Enter</kbd> opens the building ahead. The replay keeps playing or stays paused around you.
+<kbd>Shift</kbd> to boost, <kbd>Enter</kbd> opens the building ahead. The replay keeps playing or stays paused around you,
+with traffic lights, pedestrians, headlights after dark, and a building that rises up under you flings you into the air.
 Every effect can be switched off in the ⚙ menu, and the switches apply to exported clips too.
 
 ## Render your own repo
