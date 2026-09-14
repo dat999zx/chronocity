@@ -12,6 +12,7 @@ import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, FOG_MIN_LEN, a
 import { langOf } from './lang.ts'
 import { githubRepoOf } from './remote.ts'
 import { fileStats, districtStats, series, cityTotals, commitsUpTo } from './stats.ts'
+import { realTime, scaffolding, weathering, SCAFFOLD_FULL, WEATHER_MIN } from './aging.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -266,6 +267,27 @@ test('fog: sampled steps that bring many commits are busy, and a real quiet stre
   assert.ok(tl.u[501] - tl.u[500] < 0.1)                // squeezed to a flash...
   assert.ok(sg.fog(mid) > 0.999)
   assert.ok(sg.fog(mid - FOG_MIN_LEN / 4) > 0.5 && sg.fog(mid + FOG_MIN_LEN / 4) > 0.5) // ...but shown as a bank
+})
+
+test('aging: real time glides between steps; scaffolding fades over 3 days; weathering is age against history', () => {
+  const day = 86400
+  const commits = [C(T), C(T + 2 * day), C(T + 400 * day)]
+  const tl = timeline(mk(commits), 30)
+  assert.equal(realTime(commits, tl, -1), T)
+  assert.equal(realTime(commits, tl, (tl.u[0] + tl.u[1]) / 2), T + day) // half-way between the first two steps
+  assert.equal(realTime(commits, tl, 99), T + 400 * day)                // held after the last step
+
+  const s: Sample[] = [[0, 50, 50, 0], [1, 80, 40, 10]] // written at step 0, edited (+40 −10) at step 1
+  // the fresh edit (50 lines) plus the 2-day-old first version, a third left of its weight
+  assert.ok(Math.abs(scaffolding(commits, s, 1, T + 2 * day) - (50 + 50 / 3) / SCAFFOLD_FULL) < 1e-9)
+  assert.ok(scaffolding(commits, s, 1, T + 3.5 * day) < scaffolding(commits, s, 1, T + 2.5 * day)) // fading
+  assert.equal(scaffolding(commits, s, 1, T + 5.1 * day), 0)                                 // 3+ days after the last change
+  assert.equal(scaffolding(commits, s, -1, T), 0)
+
+  assert.equal(weathering(commits, s, 1, T + 2 * day), 0)                // just changed
+  assert.equal(weathering(commits, s, 1, T + 2 * day + WEATHER_MIN), 1)  // a young repo: fully weathered after 60 days
+  assert.ok(weathering(commits, s, 1, T + 400 * day) > 0.99)             // 398 days untouched against 400 days of history
+  assert.equal(weathering(commits, s, -1, T), 0)                         // not built yet
 })
 
 test('rain: storms on bursts of code churn, not data dumps', () => {

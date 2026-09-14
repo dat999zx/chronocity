@@ -10,7 +10,8 @@ import type { CityLayout } from '@chronocity/core/layout.ts'
 import type { Model, Sample } from '@chronocity/core/model.ts'
 import type { Selection } from './selection.ts'
 import { createSky } from './sky.ts'
-import { createBuildingMaterial } from './buildingMaterial.ts'
+import { createBuildingMaterial, createScaffoldMaterial } from './buildingMaterial.ts'
+import { realTime, scaffolding, weathering } from '@chronocity/core/aging.ts'
 import { createRain } from './rain.ts'
 import { autoCamera, extents } from './camera.ts'
 import type { Effects } from './effects.ts'
@@ -25,6 +26,8 @@ export const GLOW = 1.5       // playback seconds a touched file's windows stay 
 export const FLY_MS = 900     // camera flight to and from a selection
 const MUTE = 0.15             // how far language colors are pulled toward grey (tuning knob)
 const JITTER = 0.1            // per-building lightness spread, so a one-language city isn't one flat color
+const SCAFFOLD_PAD = 0.08     // scaffolding stands this far off the walls
+const SCAFFOLD_MIN = 0.02     // below this (a ~3-line change) a building gets no scaffolding
 const GREY = new THREE.Color(0xb8bcc4)
 const GROUND = new THREE.Color(0x2a2e35) // root plate: asphalt
 const PLATE = new THREE.Color(0x5a6372)  // folder plates three levels deep; shallower levels blend toward GROUND
@@ -38,7 +41,7 @@ const hash01 = (s: string) => {
   return (h >>> 0) / 4294967296
 }
 
-interface Building { path: string; s: Sample[]; x: number; z: number; w: number; d: number; maxH: number; h: number }
+interface Building { path: string; s: Sample[]; x: number; z: number; w: number; d: number; maxH: number; h: number; data: boolean }
 type Pose = { pos: THREE.Vector3; target: THREE.Vector3 }
 
 export interface City {
@@ -126,14 +129,17 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   const files: Building[] = model.files.map(([path, s]) => {
     const [x, z, w, d] = lay.lots.get(path)!
     const g = 0.15 * Math.min(w, d) // building footprint = lot inset by 15%
-    return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g, maxH: (langOf(path).data ? DATA_MAX_H : MAX_H) * scale, h: 0 }
+    const data = langOf(path).data
+    return { path, s, x: x + g, z: z + g, w: w - 2 * g, d: d - 2 * g, maxH: (data ? DATA_MAX_H : MAX_H) * scale, h: 0, data }
   })
   const night = { value: 0 }, spot = { value: 0 }, hover = { value: -1 }
   const glow = new THREE.InstancedBufferAttribute(new Float32Array(files.length), 1).setUsage(THREE.DynamicDrawUsage)
   const inSel = new THREE.InstancedBufferAttribute(new Float32Array(files.length).fill(1), 1)
+  const age = new THREE.InstancedBufferAttribute(new Float32Array(files.length), 1).setUsage(THREE.DynamicDrawUsage)
   const geo = box.clone()
   geo.setAttribute('aGlow', glow)
   geo.setAttribute('aSel', inSel)
+  geo.setAttribute('aAge', age)
   const mesh = new THREE.InstancedMesh(geo, createBuildingMaterial({ night, spot, hover }), files.length)
   files.forEach((f, i) =>
     mesh.setColorAt(i, color.setHex(langOf(f.path).color).lerp(GREY, MUTE).offsetHSL(0, 0, (hash01(f.path) - 0.5) * JITTER)))
@@ -141,6 +147,13 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.frustumCulled = false // instances change every frame; a cached bounding sphere would go stale
   group.add(mesh)
+  // Scaffolding around buildings whose files are being worked on (a cage per building; zero-scaled when there's none).
+  const scafGeo = box.clone()
+  scafGeo.setAttribute('aSel', inSel)
+  const scaffold = new THREE.InstancedMesh(scafGeo, createScaffoldMaterial(spot), files.length)
+  scaffold.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  scaffold.frustumCulled = false
+  group.add(scaffold)
   const rain = createRain(S)
   group.add(rain.object)
   const ext = extents(model.files, lay, model.commits.length)
@@ -206,16 +219,25 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
     rain.update(u, wet)
     sky.shadows(fx.shadows)
     bloom.enabled = fx.bloom
+    const now = realTime(model.commits, tl, u)
     for (let i = 0; i < files.length; i++) {
       const f = files[i], k = sampleAt(tl, f.s, u), h = heightAt(f, k, u)
       f.h = h
       glow.setX(i, k < 0 || !fx.lights ? 0 : Math.max(0, 1 - (u - tl.u[f.s[k][0]]) / GLOW))
+      age.setX(i, fx.weathering ? weathering(model.commits, f.s, k, now) : 0)
       if (h < 1e-3) m.makeScale(0, 0, 0)
       else m.makeScale(f.w, h, f.d).setPosition(f.x, 0, f.z)
       mesh.setMatrixAt(i, m)
+      // Data files are regenerated wholesale; that's not construction work.
+      const work = fx.scaffolding && !f.data && h > 0.05 && k >= 0 ? scaffolding(model.commits, f.s, k, now) : 0
+      if (work < SCAFFOLD_MIN) m.makeScale(0, 0, 0)
+      else m.makeScale(f.w + 2 * SCAFFOLD_PAD, h * (0.4 + 0.6 * work) + 0.1, f.d + 2 * SCAFFOLD_PAD).setPosition(f.x - SCAFFOLD_PAD, 0, f.z - SCAFFOLD_PAD)
+      scaffold.setMatrixAt(i, m)
     }
     mesh.instanceMatrix.needsUpdate = true
+    scaffold.instanceMatrix.needsUpdate = true
     glow.needsUpdate = true
+    age.needsUpdate = true
     bloom.strength = 0.15 + 0.6 * night.value
     composer.render()
   }

@@ -5,6 +5,8 @@ export const EFFECTS = {
   fog: 'Fog',
   rain: 'Rain',
   lights: 'Window lights',
+  scaffolding: 'Scaffolding',
+  weathering: 'Weathering',
   shadows: 'Shadows',
   bloom: 'Glow',
 } as const
