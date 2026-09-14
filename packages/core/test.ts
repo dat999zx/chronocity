@@ -6,7 +6,7 @@ import path from 'node:path'
 import * as git from 'isomorphic-git'
 import type { Commit, FileHistory, Model, Sample } from './model.ts'
 import { skipPath, isBinary, countLines } from './skip.ts'
-import { walk, sample } from './walker.ts'
+import { walk, sample, lineCounts, addDel } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP } from './timeline.ts'
 import { langOf } from './lang.ts'
@@ -36,9 +36,19 @@ test('isBinary: NUL byte in the first 8000 bytes', () => {
   assert.equal(isBinary(late), false)
 })
 
-const T = 1_700_000_000
+test('lineCounts / addDel: lines added and removed, counted as multisets', () => {
+  const lc = (s: string) => lineCounts(new TextEncoder().encode(s))
+  assert.deepEqual(addDel(lc('1\n2\n3\n'), lc('1\ntwo\n3\n4\n5\n')), [3, 1])
+  assert.deepEqual(addDel(undefined, lc('a\nb')), [2, 0])     // a new file: every line is added
+  assert.deepEqual(addDel(lc('x\n\n'), undefined), [0, 2])     // a deleted file: every line, blank ones too
+  assert.deepEqual(addDel(lc('a\nb\n'), lc('b\na\n')), [0, 0]) // moved lines are not changes
+})
 
-// c1: add a.ts (3 lines), a lockfile, a binary · c2: a.ts → 5 lines, add src/b.rs · c3: delete a.ts (60 days later)
+const T = 1_700_000_000
+// A bare commit for timeline-only tests: [t, tz, churn, sha, subject, author]
+const C = (t: number, tz = 0, churn = 0): Commit => [t, tz, churn, '', '', '']
+
+// c1: add a.ts (3 lines), a lockfile, a binary · c2: edit a.ts (2→two, +4, +5), add src/b.rs · c3: delete a.ts (60 days later)
 async function fixtureRepo(): Promise<string> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chronocity-'))
   const write = (p: string, data: string | Uint8Array) => {
@@ -54,24 +64,26 @@ async function fixtureRepo(): Promise<string> {
   write('img.png', new Uint8Array([137, 80, 78, 71, 0, 0, 1]))
   for (const f of ['a.ts', 'package-lock.json', 'img.png']) await git.add({ fs, dir, filepath: f })
   await commit('c1', T)
-  write('a.ts', '1\n2\n3\n4\n5\n')
+  write('a.ts', '1\ntwo\n3\n4\n5\n')
   write('src/b.rs', 'fn main() {}\n')
   for (const f of ['a.ts', 'src/b.rs']) await git.add({ fs, dir, filepath: f })
-  await commit('c2', T + 3600)
+  await commit('c2 edit\n\nlonger body', T + 3600)
   fs.rmSync(path.join(dir, 'a.ts'))
   await git.remove({ fs, dir, filepath: 'a.ts' })
   await commit('c3', T + 60 * 86400)
   return dir
 }
 
-test('walk: per-file LOC samples, deletes, skips, author timezone', async () => {
+test('walk: LOC with lines added/removed, deletes, skips, commit meta', async () => {
   const dir = await fixtureRepo()
   const model = await walk({ git, fs, dir })
-  assert.equal(model.v, 1)
-  assert.deepEqual(model.commits, [[T, 420, 3], [T + 3600, 420, 3], [T + 60 * 86400, 420, 5]])
+  assert.equal(model.v, 2)
+  assert.deepEqual(model.commits.map(c => c.slice(0, 3)), [[T, 420, 3], [T + 3600, 420, 3], [T + 60 * 86400, 420, 5]])
+  assert.deepEqual(model.commits.map(c => [c[4], c[5]]), [['c1', 't'], ['c2 edit', 't'], ['c3', 't']])
+  for (const c of model.commits) assert.match(c[3], /^[0-9a-f]{40}$/)
   assert.deepEqual(Object.fromEntries(model.files), {
-    'a.ts': [[0, 3], [1, 5], [2, 0]],
-    'src/b.rs': [[1, 1]],
+    'a.ts': [[0, 3, 3, 0], [1, 5, 3, 1], [2, 0, 0, 5]],
+    'src/b.rs': [[1, 1, 1, 0]],
   })
   fs.rmSync(dir, { recursive: true, force: true })
 })
@@ -80,7 +92,7 @@ test('walk: maxSteps samples history and diffs across the gap', async () => {
   const dir = await fixtureRepo()
   const model = await walk({ git, fs, dir, maxSteps: 2 })
   assert.deepEqual(model.commits.map(c => c[0]), [T, T + 60 * 86400])
-  assert.deepEqual(Object.fromEntries(model.files), { 'a.ts': [[0, 3], [1, 0]], 'src/b.rs': [[1, 1]] })
+  assert.deepEqual(Object.fromEntries(model.files), { 'a.ts': [[0, 3, 3, 0], [1, 0, 0, 3]], 'src/b.rs': [[1, 1, 1, 0]] })
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
@@ -123,7 +135,7 @@ test('layout: lots stay inside the root and never overlap', () => {
     }
 })
 
-const tlModel: Pick<Model, 'commits'> = { commits: [[T, 0, 3], [T + 3600, 0, 3], [T + 60 * 86400, 0, 5]] }
+const tlModel: Pick<Model, 'commits'> = { commits: [C(T, 0, 3), C(T + 3600, 0, 3), C(T + 60 * 86400, 0, 5)] }
 
 test('timeline: gaps capped at GAP_CAP, scaled to [0, D]', () => {
   const { u } = timeline(tlModel, 30)
@@ -133,12 +145,12 @@ test('timeline: gaps capped at GAP_CAP, scaled to [0, D]', () => {
 })
 
 test('timeline: identical timestamps spread evenly; a single commit sits at 0', () => {
-  assert.deepEqual([...timeline({ commits: [[T, 0, 0], [T, 0, 0], [T, 0, 0]] }, 10).u], [0, 5, 10])
-  assert.deepEqual([...timeline({ commits: [[T, 0, 0]] }, 10).u], [0])
+  assert.deepEqual([...timeline({ commits: [C(T), C(T), C(T)] }, 10).u], [0, 5, 10])
+  assert.deepEqual([...timeline({ commits: [C(T)] }, 10).u], [0])
 })
 
 test('timeline: author time going backwards never moves u backwards', () => {
-  const { u } = timeline({ commits: [[T, 0, 0], [T - 500, 0, 0], [T + 1000, 0, 0]] }, 10)
+  const { u } = timeline({ commits: [C(T), C(T - 500), C(T + 1000)] }, 10)
   assert.ok(u[0] <= u[1] && u[1] <= u[2])
 })
 
@@ -148,10 +160,10 @@ test('stepAt / sampleAt: last entry at or before u', () => {
   assert.equal(stepAt(tl, 0), 0)
   assert.equal(stepAt(tl, 29.9), 1)
   assert.equal(stepAt(tl, 30), 2)
-  const s: Sample[] = [[0, 3], [1, 5], [2, 0]]
+  const s: Sample[] = [[0, 3, 3, 0], [1, 5, 2, 0], [2, 0, 0, 5]]
   assert.equal(sampleAt(tl, s, -1), -1)
   assert.equal(sampleAt(tl, s, 1), 1)
-  assert.equal(sampleAt(tl, [[1, 1]], 0), -1)
+  assert.equal(sampleAt(tl, [[1, 1, 1, 0]], 0), -1)
 })
 
 test('langOf: language by extension, data files flagged', () => {
@@ -165,9 +177,9 @@ test('langOf: language by extension, data files flagged', () => {
 })
 
 const DAY0 = 1_699_920_000 // 2023-11-14 00:00 UTC
-// A commit at an author-local hour: [t, tz, churn]
-const at = (hour: number, tz = 0, day = 0): Commit => [DAY0 + day * 86400 + hour * 3600 - tz * 60, tz, 0]
-const mk = (commits: Commit[], files: FileHistory[] = []): Model => ({ v: 1, commits, files })
+// A commit at an author-local hour
+const at = (hour: number, tz = 0, day = 0): Commit => C(DAY0 + day * 86400 + hour * 3600 - tz * 60, tz)
+const mk = (commits: Commit[], files: FileHistory[] = []): Model => ({ v: 2, commits, files })
 
 test('elevation: +1 at noon, -1 at midnight, 0 at 06:00, scaled by r', () => {
   assert.ok(Math.abs(elevation({ hour: 12, r: 1 }) - 1) < 1e-12)
@@ -209,10 +221,10 @@ test('fog: only in squeezed quiet stretches, strongest mid-gap', () => {
 })
 
 test('rain: storms on bursts of code churn, not data dumps', () => {
-  const commits = [...Array(40).keys()].map(i => [T + i * 3600, 0, 0] as Commit)
+  const commits = [...Array(40).keys()].map(i => C(T + i * 3600))
   let loc = 0
-  const a: Sample[] = commits.map((_, i) => [i, (loc += i === 20 ? 5000 : 10)])
-  const m = mk(commits, [['a.ts', a], ['big.json', [[5, 100000]]]])
+  const a = commits.map((_, i): Sample => { const add = i === 20 ? 5000 : 10; return [i, (loc += add), add, 0] })
+  const m = mk(commits, [['a.ts', a], ['big.json', [[5, 100000, 100000, 0]]]])
   const sg = signals(m, timeline(m, 39)) // one commit per playback second
   assert.equal(sg.rain(20.1), 1) // +5000 lines of code
   assert.equal(sg.rain(10.1), 0) // an ordinary commit
@@ -220,9 +232,7 @@ test('rain: storms on bursts of code churn, not data dumps', () => {
 })
 
 test('signals: a one-commit repo has no weather', () => {
-  const m = mk([[T, 0, 0]]), sg = signals(m, timeline(m, 10))
+  const m = mk([C(T)]), sg = signals(m, timeline(m, 10))
   assert.equal(sg.rain(0), 0)
   assert.equal(sg.fog(0), 0)
 })
-
-
