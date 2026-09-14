@@ -18,13 +18,16 @@ Every effect means something:
 - **Color** — language, in GitHub's linguist palette. Data files are low grey warehouses, not towers.
 
 Click any building or district for its story: size, history, its last changes with `+added −removed`, and the real diff from GitHub.
-Links like `?select=src/cli/program.ts` open straight to it; `?repo=chronocity` switches the demo.
+Links like `?select=src/cli/program.ts` open straight to it.
 Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> step one commit, <kbd>Esc</kbd> close.
 
 ## Render your own repo
 
 Clone it with git, then drop the folder anywhere on the page (or use *choose a folder…* in the intro card, ⓘ top-right).
-Its `.git` is read and replayed right in your browser, in a background thread. Nothing is uploaded; there is no server.
+Only its `.git` history is read and replayed, right in your browser in a background thread. Nothing is uploaded, there
+is no server, and ignored files (node_modules, build output) are never touched. In browsers without Chrome's
+folder-picker API (Brave, Firefox, Safari) you drag the folder in: their only other picker lists every file in the folder
+behind an "Upload N files?" prompt.
 
 A plain GitHub URL can't work without one: browsers aren't allowed to clone from GitHub, and "Download ZIP" archives
 contain no history. So pasting a URL in the card gives you the `git clone` command to run first.

@@ -46,8 +46,10 @@ export function createIntro(root: HTMLElement, ctx: IntroContext): Intro {
     $<HTMLParagraphElement>('.now').append(' · ', a)
   }
 
-  // Switch project
-  for (const d of [...ctx.gallery, ...(ctx.local ? [ctx.local] : [])]) {
+  // Switch project (only worth showing when there's more than one: the demo plus a repo you dropped)
+  const choices = [...ctx.gallery, ...(ctx.local ? [ctx.local] : [])]
+  $<HTMLDivElement>('.projects').hidden = choices.length < 2
+  for (const d of choices) {
     const b = document.createElement('button')
     b.textContent = d.name === 'local' ? `your repo (${d.repo})` : d.name
     b.classList.toggle('on', d.name === ctx.current.name)
@@ -91,6 +93,11 @@ export function createIntro(root: HTMLElement, ctx: IntroContext): Intro {
     const list = pickInput.files
     if (list?.length) run(onBytes => fromFileList(list, onBytes))
   }
+  // Without Chrome's folder-picker API (Brave disables it, Firefox/Safari lack it) the only picker is the
+  // <input webkitdirectory>: the browser lists EVERY file in the folder, node_modules and all, behind an
+  // "Upload N files to this site?" prompt, before any page code can filter. Drag-and-drop reads only .git, so offer that.
+  // (Replaces the line holding the .pick button, so it runs after that button is wired.)
+  if (!directoryPicker) $<HTMLDivElement>('.dropline').textContent = 'Drag a cloned repo folder onto this page.'
 
   // Drop a folder anywhere on the page.
   addEventListener('dragover', e => {

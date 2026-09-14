@@ -48,6 +48,7 @@ const openRepo = (name: string) => { location.search = `?repo=${encodeURICompone
 for (const d of [...gallery, ...(localEntry ? [localEntry] : [])])
   repoSel.append(new Option(d.name === 'local' ? `your repo (${d.repo})` : d.name, d.name, false, d.name === demo.name))
 repoSel.onchange = () => openRepo(repoSel.value)
+repoSel.hidden = repoSel.options.length < 2 // one demo and nothing dropped yet: nothing to switch between
 
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)

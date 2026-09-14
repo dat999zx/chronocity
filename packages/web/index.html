@@ -95,8 +95,9 @@
   #intro footer { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-top: 16px }
   #intro .go { padding: 8px 14px; background: #8fb3ff; color: #0e1320; border: 0; font-weight: 600; cursor: pointer }
   #intro[hidden], #intro .clone[hidden] { display: none } /* their display: grid would otherwise beat the hidden attribute */
+  #intro .projects[hidden], #intro .touchnote { display: none }
   #intro.touch h2, #intro.touch .drop, #intro.touch .gh, #intro.touch .clone { display: none }
-  #intro.touch .projects::after { content: 'Open chronocity on a desktop to render your own repo.'; width: 100%; margin-top: 6px; font-size: 12px; opacity: .65 }
+  #intro.touch .touchnote { display: block }
   body.dropping::after { content: 'Drop the repo folder to render it'; position: fixed; inset: 12px; z-index: 10; display: grid; place-items: center;
     border: 2px dashed #8fb3ff; border-radius: 16px; background: rgba(143,179,255,.08); font-size: 18px; pointer-events: none }
 </style>
@@ -131,10 +132,11 @@
       Press play and its whole history replays: the sky follows the hours its authors commit, fog marks quiet stretches, rain a burst of changes.</p>
     <p class="now"></p>
     <div class="projects"></div>
+    <p class="touchnote muted">Open chronocity on a desktop to render your own repo.</p>
     <h2>Render your own</h2>
     <div class="drop">
-      <div>Drop a cloned repo folder anywhere, or <button class="pick">choose a folder…</button></div>
-      <div class="muted">It all runs in your browser. Nothing is uploaded.</div>
+      <div class="dropline">Drop a cloned repo folder anywhere, or <button class="pick">choose a folder…</button></div>
+      <div class="muted">Only its .git history is read, right here in your browser. Nothing is uploaded, and ignored files like node_modules are never touched.</div>
       <input class="pickinput" type="file" webkitdirectory hidden>
       <div class="status" aria-live="polite"></div>
       <progress max="1" value="0" hidden></progress>

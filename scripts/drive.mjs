@@ -54,7 +54,8 @@ const click = async (x, y) => { await mouse('mouseMoved', x, y, { button: 'none'
 const KEYS = { Escape: 27, ' ': 32, ArrowRight: 39, ArrowLeft: 37 }
 
 for (const s of steps) {
-  if (s.go) { await send('Page.navigate', { url: s.go }); await sleep(s.settle ?? 4000) }
+  if (s.init) await send('Page.addScriptToEvaluateOnNewDocument', { source: s.init }) // runs before the page's scripts on every later load
+  else if (s.go) { await send('Page.navigate', { url: s.go }); await sleep(s.settle ?? 4000) }
   else if (s.wait) await sleep(s.wait)
   else if (s.move) await mouse('mouseMoved', ...s.move, { button: 'none' })
   else if (s.click) await click(...s.click)

@@ -55,7 +55,7 @@ export async function fromFileList(list: FileList, onBytes: (n: number) => void)
     const path = root === '.git' ? `.git/${rel}` : rel // they picked the .git folder itself
     if (path.startsWith('.git/')) await c.add(path, f)
   }
-  return c.finish(root)
+  return c.finish(root === '.git' ? 'repo' : root)
 }
 
 type Picker = (options?: { id?: string; mode?: 'read' }) => Promise<FileSystemDirectoryHandle>

@@ -5,12 +5,5 @@
     "steps": 738,
     "files": 1135,
     "about": "Persistent memory for Claude Code, Cursor and Codex. Facts are typed, sourced, and retired when they change."
-  },
-  {
-    "name": "chronocity",
-    "repo": "dat999zx/chronocity",
-    "steps": 37,
-    "files": 59,
-    "about": "This project, rendering its own history."
   }
 ]
