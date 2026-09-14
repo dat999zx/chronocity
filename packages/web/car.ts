@@ -95,8 +95,10 @@ export function createCar(paintColor = 0xd8452f): Car {
       aim.set(x + sx * 4, y - 0.3, z + cz * 4)
       spot.position.copy(nose)
       spot.target.position.copy(aim)
+      // Not lookAt(): it takes a world point, and these are group-local (the city is offset by -S/2), which aimed
+      // the beam off toward the city's corner. The cone points along +z: turn it with the car, tilt it at the road.
       beam.position.copy(nose)
-      beam.lookAt(aim)
+      beam.rotation.set(Math.atan2(nose.y - aim.y, 4), heading, 0, 'YXZ')
     },
     update(dt, v, steer, braking, night, on) {
       for (const w of wheels) w.rotation.x += (v * dt) / 0.085
