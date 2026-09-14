@@ -72,3 +72,18 @@ export function series(model: Model, tl: Timeline, indices: number[], points = 4
   }
   return out
 }
+
+export interface Totals { files: number; loc: number }
+
+// Standing files and their lines at playback time u: the HUD and the clip overlay.
+export function cityTotals(model: Model, tl: Timeline, u: number): Totals {
+  let files = 0, loc = 0
+  for (const [, s] of model.files) {
+    const k = sampleAt(tl, s, u)
+    if (k >= 0 && s[k][1] > 0) {
+      files++
+      loc += s[k][1]
+    }
+  }
+  return { files, loc }
+}

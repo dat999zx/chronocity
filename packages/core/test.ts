@@ -10,7 +10,7 @@ import { walk, sample, lineCounts, addDel, subjectOf } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
-import { fileStats, districtStats, series } from './stats.ts'
+import { fileStats, districtStats, series, cityTotals } from './stats.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -293,6 +293,12 @@ test('headline: biggest commit of the previous window; the exact commit before t
   assert.equal(headline(churn, tl, 1.3), 3)   // window [0.6, 1.2): the +9
   const sparse = { u: Float64Array.from([0, 5]), D: 5 }
   assert.equal(headline(Float64Array.from([1, 1]), sparse, 3), 0) // empty window: the commit at u
+})
+
+test('cityTotals: standing files and lines at u', () => {
+  assert.deepEqual(cityTotals(statsModel, statsTl, -1), { files: 0, loc: 0 })
+  assert.deepEqual(cityTotals(statsModel, statsTl, 1.5), { files: 3, loc: 116 }) // a.ts 12 + b.md 4 + c.json 100
+  assert.deepEqual(cityTotals(statsModel, statsTl, 2), { files: 2, loc: 104 })   // a.ts demolished
 })
 
 
