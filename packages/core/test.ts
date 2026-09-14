@@ -6,7 +6,7 @@ import path from 'node:path'
 import * as git from 'isomorphic-git'
 import type { Commit, FileHistory, Model, Sample } from './model.ts'
 import { skipPath, isBinary, countLines } from './skip.ts'
-import { walk, sample, lineCounts, addDel } from './walker.ts'
+import { walk, sample, lineCounts, addDel, subjectOf } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
@@ -43,6 +43,13 @@ test('lineCounts / addDel: lines added and removed, counted as multisets', () =>
   assert.deepEqual(addDel(undefined, lc('a\nb')), [2, 0])     // a new file: every line is added
   assert.deepEqual(addDel(lc('x\n\n'), undefined), [0, 2])     // a deleted file: every line, blank ones too
   assert.deepEqual(addDel(lc('a\nb\n'), lc('b\na\n')), [0, 0]) // moved lines are not changes
+})
+
+test('subjectOf: first line, or the PR title for GitHub merge commits', () => {
+  assert.equal(subjectOf('fix: a thing\n\nbody'), 'fix: a thing')
+  assert.equal(subjectOf('Merge pull request #2 from me/branch\n\nfeat: stop hook + lifecycle\n\nmore'), 'feat: stop hook + lifecycle (#2)')
+  assert.equal(subjectOf('Merge pull request #3 from me/branch'), 'Merge pull request #3 from me/branch') // no title to use
+  assert.equal(subjectOf('x'.repeat(150)).length, 100)
 })
 
 const T = 1_700_000_000
@@ -265,7 +272,7 @@ test('districtStats: folder totals, languages, tallest; root covers everything',
     top: [0, 1],
   })
   const root = districtStats(statsModel, statsTl, '', 2) // a.ts demolished by now
-  assert.deepEqual([root.files, root.loc, root.changes, root.first, root.last, root.top], [2, 104, 5, 0, 2, [2, 1]])
+  assert.deepEqual([root.files, root.loc, root.changes, root.first, root.last, root.top], [2, 104, 5, 0, 2, [1]]) // c.json is a warehouse, not a tower
   assert.deepEqual(root.langs.map(l => l.name), ['Data', 'Markdown'])
 })
 

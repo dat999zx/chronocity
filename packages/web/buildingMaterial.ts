@@ -64,7 +64,8 @@ diffuseColor.rgb *= spotK;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 float winLit = max(vGlow * mix(0.5, 1.0, uNight), step(winRnd, ${LIT_SHARE.toFixed(2)}) * uNight * (0.55 + 0.45 * fract(winRnd * 7.31)));
 totalEmissiveRadiance += ${WARM} * winMask * winLit * 1.5 * spotK;
-totalEmissiveRadiance += diffuseColor.rgb * 0.6 * vHover;`)
+totalEmissiveRadiance += diffuseColor.rgb * 0.35 * vSel * uSpot;             // the selection glows a little
+totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.35) * 0.9 * vHover; // and the hovered building clearly`)
   }
   return mat
 }

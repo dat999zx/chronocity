@@ -55,6 +55,16 @@ export function sample<T>(arr: T[], max: number): T[] {
   return Array.from({ length: max }, (_, i) => arr[Math.round((i * (arr.length - 1)) / (max - 1))])
 }
 
+// A commit's one-line subject (≤ 100 chars). GitHub merge commits say "Merge pull request #N from owner/branch" on the
+// first line and carry the PR title in the next paragraph; on a first-parent walk they are most of the story, so
+// use "<PR title> (#N)" instead.
+export function subjectOf(message: string): string {
+  const lines = message.split('\n').map(l => l.trim())
+  const pr = /^Merge pull request (#\d+) from /.exec(lines[0])
+  const title = pr ? lines.slice(1).find(l => l) : undefined
+  return (pr && title ? `${title} (${pr[1]})` : lines[0]).slice(0, 100)
+}
+
 // Walk the first-parent history of `ref` and return a Model (spec: "Model v2").
 export async function walk({ git, fs, dir, gitdir, ref = 'HEAD', maxSteps = MAX_STEPS, onProgress = () => {} }: WalkOptions): Promise<Model> {
   const cache = {} // shared packfile cache: without it every read re-parses the pack index
@@ -69,7 +79,7 @@ export async function walk({ git, fs, dir, gitdir, ref = 'HEAD', maxSteps = MAX_
       t: commit.author.timestamp,
       // isomorphic-git's timezoneOffset has Date#getTimezoneOffset's sign; the Model stores minutes east of UTC
       tz: -commit.author.timezoneOffset || 0,
-      subject: commit.message.split('\n')[0].trim().slice(0, 100),
+      subject: subjectOf(commit.message),
       author: commit.author.name,
     })
     oid = commit.parent[0]

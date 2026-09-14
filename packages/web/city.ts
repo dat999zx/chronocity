@@ -55,7 +55,7 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap // three 0.186 dropped PCFSoft; softness comes from shadow.radius
   const scene = new THREE.Scene()
 
   const S = lay.size
@@ -162,9 +162,12 @@ export function createCity(canvas: HTMLCanvasElement, model: Model, lay: CityLay
       target = world(f.x + f.w / 2, top * 0.6, f.z + f.d / 2)
       dist = Math.max(10, top * 2.2 + Math.max(f.w, f.d) * 4)
     } else {
-      const [x, z, w, d] = lay.districts[sel.index]
-      target = world(x + w / 2, 0, z + d / 2)
-      dist = Math.max(10, Math.hypot(w, d) * 1.1)
+      // Frame the district's towers too, or the camera lands among them.
+      const [x, z, w, d, , folder] = lay.districts[sel.index], prefix = folder + '/'
+      let tallest = 0
+      for (const f of files) if (f.path.startsWith(prefix)) tallest = Math.max(tallest, f.h)
+      target = world(x + w / 2, tallest * 0.3, z + d / 2)
+      dist = Math.max(10, Math.hypot(w, d) * 1.2, tallest * 2.4)
     }
     const dir = camera.position.clone().sub(target).setY(0)
     if (dir.lengthSq() < 1e-6) dir.set(1, 0, 1)

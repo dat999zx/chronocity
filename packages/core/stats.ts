@@ -18,7 +18,7 @@ export interface DistrictStats {
   first: number    // step, -1 when nothing under the folder exists yet
   last: number
   langs: LangShare[] // by standing lines, largest first
-  top: number[]      // indices into model.files of the tallest standing buildings
+  top: number[]      // indices into model.files of the tallest standing buildings (data files excluded)
 }
 
 // One file at playback time u; null before it first appears.
@@ -47,8 +47,8 @@ export function districtStats(model: Model, tl: Timeline, folder: string, u: num
     if (l === 0) return
     files++
     loc += l
-    standing.push([i, l])
     const lang = langOf(path)
+    if (!lang.data) standing.push([i, l]) // data files are drawn as low warehouses, so they're never "tallest"
     const share = langs.get(lang.name) ?? { name: lang.name, color: lang.color, loc: 0 }
     share.loc += l
     langs.set(lang.name, share)
