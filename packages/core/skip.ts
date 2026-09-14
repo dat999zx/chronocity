@@ -2,9 +2,11 @@
 const LOCKFILES = new Set([
   'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'Cargo.lock',
   'Gemfile.lock', 'poetry.lock', 'composer.lock', 'go.sum', 'uv.lock',
+  'npm-shrinkwrap.json', 'Pipfile.lock', 'flake.lock',
 ])
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'vendor'])
-const GENERATED = /\.min\.(js|css)$|\.map$/
+// ponytail: fixed list; honour .gitattributes linguist-generated/-vendored if repos slip through.
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'vendor', 'third_party', 'bower_components', 'Pods', '.yarn'])
+const GENERATED = /\.min\.(js|css)$|\.map$|\.pb\.go$|_pb2\.py$|\.generated\.\w+$|\.snap$/
 
 export function skipPath(path: string): boolean {
   const parts = path.split('/')

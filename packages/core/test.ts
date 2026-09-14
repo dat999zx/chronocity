@@ -15,9 +15,12 @@ import { fileStats, districtStats, series, cityTotals, commitsUpTo } from './sta
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
-    'x.min.css', 'app.js.map', 'node_modules/x/i.js', 'dist/app.js', 'vendor/lib.go'])
+    'x.min.css', 'app.js.map', 'node_modules/x/i.js', 'dist/app.js', 'vendor/lib.go',
+    '.yarn/releases/yarn-3.6.0.cjs', 'third_party/zlib/zlib.c', 'api/user.pb.go', 'api/user_pb2.py',
+    'src/schema.generated.ts', 'src/__snapshots__/App.test.js.snap', 'Pipfile.lock'])
     assert.equal(skipPath(p), true, p)
-  for (const p of ['src/app.js', 'README.md', 'distance.js', 'src/vendors.ts', 'lock.json'])
+  for (const p of ['src/app.js', 'README.md', 'distance.js', 'src/vendors.ts', 'lock.json',
+    'src/snapshot.ts', 'src/generated.ts', 'yarn/cli.js'])
     assert.equal(skipPath(p), false, p)
 })
 
