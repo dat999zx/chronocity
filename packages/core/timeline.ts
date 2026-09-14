@@ -62,16 +62,7 @@ export function elevation({ hour, r }: SkyState): number {
 // Daylight and weather as pure functions of playback time, built from prefix sums over commits.
 export function signals(model: Model, tl: Timeline): Signals {
   const c = model.commits, n = c.length
-  // Code churn per step. Data files are left out: a regenerated JSON fixture is not a storm.
-  const code = new Float64Array(n)
-  for (const [path, s] of model.files) {
-    if (langOf(path).data) continue
-    let last = 0
-    for (const [i, loc] of s) {
-      code[i] += Math.abs(loc - last)
-      last = loc
-    }
-  }
+  const code = codeChurn(model)
   // Prefix sums: unit vectors of each commit's author-local hour, and code churn.
   const cos = new Float64Array(n + 1), sin = new Float64Array(n + 1), churn = new Float64Array(n + 1)
   for (let i = 0; i < n; i++) {
@@ -88,9 +79,9 @@ export function signals(model: Model, tl: Timeline): Signals {
     const a = Math.max(0, Math.min(end(u - SKY_WINDOW), b - SKY_MIN_COMMITS))
     return [(cos[b] - cos[a]) / (b - a), (sin[b] - sin[a]) / (b - a)]
   }
-  const codeChurn = (u: number) => churn[end(u)] - churn[end(u - RAIN_WINDOW)]
+  const codeChurnPerWindow = (u: number) => churn[end(u)] - churn[end(u - RAIN_WINDOW)]
   // Rain thresholds come from the whole clip sampled evenly, so "wet" means a share of playback time.
-  const clip = Array.from({ length: 600 }, (_, j) => codeChurn((j / 599) * tl.D)).sort((x, y) => x - y)
+  const clip = Array.from({ length: 600 }, (_, j) => codeChurnPerWindow((j / 599) * tl.D)).sort((x, y) => x - y)
   const dry = clip[540], storm = clip[594]
 
   return {
@@ -111,7 +102,42 @@ export function signals(model: Model, tl: Timeline): Signals {
       return len > 0 ? strength * Math.sin((Math.PI * (u - tl.u[k])) / len) : 0
     },
     rain(u) {
-      return storm > dry ? Math.min(1, Math.max(0, (codeChurn(u) - dry) / (storm - dry))) : 0
+      return storm > dry ? Math.min(1, Math.max(0, (codeChurnPerWindow(u) - dry) / (storm - dry))) : 0
     },
   }
+}
+
+// Code churn per step: Σ|ΔLOC| over code files. Data files are left out: a regenerated JSON fixture is not a storm.
+export function codeChurn(model: Model): Float64Array {
+  const code = new Float64Array(model.commits.length)
+  for (const [path, s] of model.files) {
+    if (langOf(path).data) continue
+    let last = 0
+    for (const [i, loc] of s) {
+      code[i] += Math.abs(loc - last)
+      last = loc
+    }
+  }
+  return code
+}
+
+// Churn summed into `bins` equal slices of playback time [0, span]: the bars under the scrubber.
+export function activity(churn: Float64Array, tl: Timeline, bins: number, span: number): Float64Array {
+  const out = new Float64Array(bins)
+  for (let i = 0; i < churn.length; i++) out[Math.min(bins - 1, Math.floor((tl.u[i] / span) * bins))] += churn[i]
+  return out
+}
+
+export const TICK = 0.6 // playback seconds per ticker headline
+
+// The commit the ticker names while playing: the biggest code change of the previous TICK window, so headlines
+// change at a readable pace and describe what just happened. First window, or an empty one: the commit at u.
+export function headline(churn: Float64Array, tl: Timeline, u: number, tick = TICK): number {
+  const w = Math.floor(u / tick)
+  const a = stepAt(tl, (w - 1) * tick - 1e-9) + 1 // first step with u_i >= (w-1)·tick
+  const b = stepAt(tl, w * tick - 1e-9)           // last step with u_i < w·tick
+  if (w < 1 || b < a) return stepAt(tl, u)
+  let best = a
+  for (let i = a + 1; i <= b; i++) if (churn[i] > churn[best]) best = i
+  return best
 }

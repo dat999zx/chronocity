@@ -8,8 +8,9 @@ import type { Commit, FileHistory, Model, Sample } from './model.ts'
 import { skipPath, isBinary, countLines } from './skip.ts'
 import { walk, sample, lineCounts, addDel } from './walker.ts'
 import { layout } from './layout.ts'
-import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP } from './timeline.ts'
+import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
+import { fileStats, districtStats, series } from './stats.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
   for (const p of ['package-lock.json', 'web/yarn.lock', 'Cargo.lock', 'go.sum', 'a/b.min.js',
@@ -241,4 +242,50 @@ test('layout: every district knows its folder path', () => {
   const { districts } = layout(['a/b/c.ts', 'a/d.ts', 'e.ts'])
   assert.deepEqual(districts.map(d => [d[4], d[5]]).sort(), [[0, ''], [1, 'a'], [2, 'a/b']])
 })
+
+const statsModel = mk([C(T), C(T + 3600), C(T + 7200)], [
+  ['src/a.ts', [[0, 10, 10, 0], [1, 12, 3, 1], [2, 0, 0, 12]]],
+  ['src/b.md', [[1, 4, 4, 0]]],
+  ['c.json', [[0, 100, 100, 0]]],
+])
+const statsTl = timeline(statsModel, 2) // u = [0, 1, 2]
+
+test('fileStats: size, first/last, recent changes newest first; null before it exists', () => {
+  assert.deepEqual(fileStats(statsModel, statsTl, 0, 1.5), {
+    loc: 12, first: 0, last: 1, changes: 2,
+    recent: [{ step: 1, add: 3, del: 1 }, { step: 0, add: 10, del: 0 }],
+  })
+  assert.equal(fileStats(statsModel, statsTl, 1, 0.5), null)
+})
+
+test('districtStats: folder totals, languages, tallest; root covers everything', () => {
+  assert.deepEqual(districtStats(statsModel, statsTl, 'src', 1.5), {
+    files: 2, loc: 16, changes: 3, first: 0, last: 1,
+    langs: [{ name: 'TypeScript', color: 0x3178c6, loc: 12 }, { name: 'Markdown', color: 0x083fa1, loc: 4 }],
+    top: [0, 1],
+  })
+  const root = districtStats(statsModel, statsTl, '', 2) // a.ts demolished by now
+  assert.deepEqual([root.files, root.loc, root.changes, root.first, root.last, root.top], [2, 104, 5, 0, 2, [2, 1]])
+  assert.deepEqual(root.langs.map(l => l.name), ['Data', 'Markdown'])
+})
+
+test('series: total lines of the given files across the clip', () => {
+  assert.deepEqual([...series(statsModel, statsTl, [0, 1], 3)], [10, 16, 4])
+})
+
+test('activity: code churn binned over playback time', () => {
+  const tl = { u: Float64Array.from([0, 0.5, 1.5, 2]), D: 2 }
+  assert.deepEqual([...activity(Float64Array.from([1, 2, 3, 4]), tl, 2, 2)], [3, 7])
+})
+
+test('headline: biggest commit of the previous window; the exact commit before that', () => {
+  const tl = { u: Float64Array.from([0, 0.1, 0.2, 0.7, 0.8]), D: 1 }
+  const churn = Float64Array.from([1, 5, 2, 9, 1])
+  assert.equal(headline(churn, tl, 0.3), 2)   // first window: exactly the commit at u
+  assert.equal(headline(churn, tl, 0.65), 1)  // window [0, 0.6): the +5
+  assert.equal(headline(churn, tl, 1.3), 3)   // window [0.6, 1.2): the +9
+  const sparse = { u: Float64Array.from([0, 5]), D: 5 }
+  assert.equal(headline(Float64Array.from([1, 1]), sparse, 3), 0) // empty window: the commit at u
+})
+
 
