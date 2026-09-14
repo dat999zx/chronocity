@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>chronocity</title>
+<title>chronocity — watch your repo grow into a city</title>
+<meta name="description" content="Every file is a building, every folder a district, height is lines of code. Press play and the whole git history replays as a timelapse.">
+<meta property="og:title" content="chronocity — watch your repo grow into a city">
+<meta property="og:description" content="Every file is a building, every folder a district, height is lines of code. Press play and the whole git history replays as a timelapse.">
+<meta property="og:image" content="https://dat999zx.github.io/chronocity/og.png">
+<meta property="og:url" content="https://dat999zx.github.io/chronocity/">
+<meta name="twitter:card" content="summary_large_image">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1f27; color: #e8eaf0; font: 14px system-ui, sans-serif }
   #city { display: block; width: 100vw; height: 100vh; touch-action: none }
@@ -58,6 +64,7 @@
   #clipping .box { display: grid; gap: 12px; min-width: 320px; padding: 20px 24px; border-radius: 12px; background: #1b1f27; border: 1px solid #3a404c; text-align: center }
   #clipping progress { width: 100% }
   #clipmenu[hidden], #clipping[hidden] { display: none } /* their display: flex/grid would otherwise beat the hidden attribute */
+  .bare #hud, .bare #bar, .bare #ticker { display: none }
 </style>
 </head>
 <body>

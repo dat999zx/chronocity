@@ -18,6 +18,7 @@ const repoSel = $<HTMLSelectElement>('repo')
 
 // ?repo=<name> picks a gallery demo · ?u=12.5 opens paused there · ?select=<path | folder | /> opens its panel
 const q = new URLSearchParams(location.search)
+if (q.get('ui') === '0') document.body.classList.add('bare') // clean stills: README hero, link previews
 
 async function load<T>(url: string): Promise<T> {
   const res = await fetch(url)
