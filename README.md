@@ -21,6 +21,15 @@ Click any building or district for its story: size, history, its last changes wi
 Links like `?select=src/cli/program.ts` open straight to it; `?repo=chronocity` switches the demo.
 Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> step one commit, <kbd>Esc</kbd> close.
 
+## Render your own repo
+
+Clone it with git, then drop the folder anywhere on the page (or use *choose a folder…* in the intro card, ⓘ top-right).
+Its `.git` is read and replayed right in your browser, in a background thread. Nothing is uploaded; there is no server.
+
+A plain GitHub URL can't work without one: browsers aren't allowed to clone from GitHub, and "Download ZIP" archives
+contain no history. So pasting a URL in the card gives you the `git clone` command to run first.
+Limits: a `.git` up to 400 MB, and a full clone (not `--depth 1`).
+
 ## Run it
 
 Needs Node 24+ (tests and the bake script run the TypeScript directly).

@@ -28,13 +28,14 @@ fs.writeFileSync(out, JSON.stringify(demo))
 const secs = ((Date.now() - started) / 1000).toFixed(1)
 console.error(`\n${model.commits.length} steps, ${model.files.length} files, ${secs}s -> ${out}`)
 
-// demos/index.json lists the gallery. Upsert this demo, keeping order: the first entry is the default demo.
-type Entry = { name: string; repo: string; steps: number; files: number }
+// demos/index.json lists the gallery. Upsert this demo, keeping order (the first entry is the default demo) and any
+// hand-written fields such as `about`, the one-liner the intro card shows.
+type Entry = { name: string; repo: string; steps: number; files: number; about?: string }
 const indexFile = fileURLToPath(new URL('../web/public/demos/index.json', import.meta.url))
 const index: Entry[] = fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, 'utf8')) : []
 const entry: Entry = { name, repo: label, steps: model.commits.length, files: model.files.length }
 const at = index.findIndex(e => e.name === name)
-if (at >= 0) index[at] = entry
+if (at >= 0) index[at] = { ...index[at], ...entry }
 else index.push(entry)
 fs.writeFileSync(indexFile, JSON.stringify(index, null, 2) + '\n')
 console.error(`gallery: ${index.map(e => e.name).join(', ')}`)

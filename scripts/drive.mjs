@@ -70,6 +70,13 @@ for (const s of steps) {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: s.key, code, windowsVirtualKeyCode: KEYS[s.key] })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: s.key, code })
   }
+  else if (s.setFiles) {
+    // Pick files (or, for <input webkitdirectory>, a whole folder) on a file input, as if chosen in the dialog.
+    const { root } = (await send('DOM.getDocument', { depth: 0 })).result
+    const { nodeId } = (await send('DOM.querySelector', { nodeId: root.nodeId, selector: s.setFiles })).result
+    await send('DOM.setFileInputFiles', { nodeId, files: s.paths.map(p => path.resolve(p)) })
+    console.log('setFiles', s.setFiles, s.paths.join(', '))
+  }
   else if (s.eval) {
     const r = await send('Runtime.evaluate', { expression: s.eval, returnByValue: true, awaitPromise: true })
     console.log('EVAL', s.label ?? '', JSON.stringify(r.result?.result?.value))

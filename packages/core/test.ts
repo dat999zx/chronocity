@@ -10,6 +10,7 @@ import { walk, sample, lineCounts, addDel, subjectOf } from './walker.ts'
 import { layout } from './layout.ts'
 import { timeline, stepAt, sampleAt, signals, elevation, GAP_CAP, activity, headline } from './timeline.ts'
 import { langOf } from './lang.ts'
+import { githubRepoOf } from './remote.ts'
 import { fileStats, districtStats, series, cityTotals, commitsUpTo } from './stats.ts'
 
 test('skipPath: lockfiles, minified, maps, vendored dirs', () => {
@@ -331,4 +332,15 @@ test('commitsUpTo: running total of real commits, merges included', () => {
   const cs = [C(T), C(T + 1), C(T + 2)]
   cs[2][6] = 3 // a merge that brings two branch commits
   assert.deepEqual([...commitsUpTo(mk(cs))], [1, 2, 5])
+})
+
+test('githubRepoOf: owner/name of a GitHub origin in .git/config, else null', () => {
+  const cfg = (url: string) => `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${url}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`
+  assert.equal(githubRepoOf(cfg('https://github.com/dat999zx/knowl.git')), 'dat999zx/knowl')
+  assert.equal(githubRepoOf(cfg('https://github.com/dat999zx/knowl')), 'dat999zx/knowl')
+  assert.equal(githubRepoOf(cfg('git@github.com:dat999zx/chrono.city.git')), 'dat999zx/chrono.city')
+  assert.equal(githubRepoOf(cfg('ssh://git@github.com/a-b/c_d.git')), 'a-b/c_d')
+  assert.equal(githubRepoOf(cfg('https://gitlab.com/a/b.git')), null)
+  assert.equal(githubRepoOf('[remote "upstream"]\n\turl = https://github.com/x/y.git\n'), null) // only origin counts
+  assert.equal(githubRepoOf(''), null)
 })

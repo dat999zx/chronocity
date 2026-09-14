@@ -64,7 +64,41 @@
   #clipping .box { display: grid; gap: 12px; min-width: 320px; padding: 20px 24px; border-radius: 12px; background: #1b1f27; border: 1px solid #3a404c; text-align: center }
   #clipping progress { width: 100% }
   #clipmenu[hidden], #clipping[hidden] { display: none } /* their display: flex/grid would otherwise beat the hidden attribute */
-  .bare #hud, .bare #bar, .bare #ticker { display: none }
+  .bare #hud, .bare #bar, .bare #ticker, .bare #about { display: none }
+  #about { position: fixed; top: 10px; right: 12px; width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 17px; cursor: pointer;
+    background: rgba(16,20,28,.6); border: 1px solid rgba(255,255,255,.18); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px) }
+  #intro { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(8,10,14,.28) }
+  #intro .card { position: relative; box-sizing: border-box; width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+    padding: 22px 24px 18px; border-radius: 16px; background: rgba(16,20,28,.66); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 30px 80px rgba(0,0,0,.5);
+    animation: pop .28s cubic-bezier(.2,.9,.3,1.2) }
+  #intro h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .4px }
+  #intro h2 { margin: 16px 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; opacity: .7 }
+  #intro .lede, #intro .now { margin: 0 0 10px; line-height: 1.5 }
+  #intro a { color: #9fb3d9 }
+  #intro .muted { font-size: 12px; opacity: .65 }
+  #intro .close { position: absolute; top: 10px; right: 10px; background: none; border: 0; opacity: .7; cursor: pointer }
+  #intro .projects { display: flex; flex-wrap: wrap; gap: 6px }
+  #intro .projects button { cursor: pointer }
+  #intro .projects button.on { border-color: #8fb3ff; background: rgba(143,179,255,.16) }
+  #intro .drop { display: grid; gap: 6px; padding: 14px; border: 1.5px dashed rgba(255,255,255,.28); border-radius: 12px; text-align: center }
+  #intro .drop .pick { padding: 0; background: none; border: 0; color: #9fb3d9; text-decoration: underline; cursor: pointer }
+  .dropping #intro .drop, #intro .drop.busy { border-color: #8fb3ff; background: rgba(143,179,255,.08) }
+  #intro .status { min-height: 1em; font-size: 12px }
+  #intro .status.err { color: #ff9f9f }
+  #intro .drop progress { width: 100% }
+  #intro .gh { display: flex; gap: 6px; margin-top: 10px }
+  #intro .gh input { flex: 1; min-width: 0; padding: 6px 8px; background: rgba(0,0,0,.3); color: inherit; border: 1px solid #3a404c; border-radius: 6px; font: inherit }
+  #intro .clone { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; margin-top: 8px }
+  #intro .clone code { overflow-x: auto; white-space: nowrap; padding: 6px 8px; background: rgba(0,0,0,.35); border-radius: 6px; font: 12px ui-monospace, Consolas, monospace }
+  #intro .clone .muted { grid-column: 1 / -1 }
+  #intro footer { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-top: 16px }
+  #intro .go { padding: 8px 14px; background: #8fb3ff; color: #0e1320; border: 0; font-weight: 600; cursor: pointer }
+  #intro[hidden], #intro .clone[hidden] { display: none } /* their display: grid would otherwise beat the hidden attribute */
+  #intro.touch h2, #intro.touch .drop, #intro.touch .gh, #intro.touch .clone { display: none }
+  #intro.touch .projects::after { content: 'Open chronocity on a desktop to render your own repo.'; width: 100%; margin-top: 6px; font-size: 12px; opacity: .65 }
+  body.dropping::after { content: 'Drop the repo folder to render it'; position: fixed; inset: 12px; z-index: 10; display: grid; place-items: center;
+    border: 2px dashed #8fb3ff; border-radius: 16px; background: rgba(143,179,255,.08); font-size: 18px; pointer-events: none }
 </style>
 </head>
 <body>
@@ -87,6 +121,33 @@
     <option value="1" selected>1×</option>
     <option value="2">2×</option>
   </select>
+</div>
+<button id="about" aria-label="About chronocity, and rendering your own repo">ⓘ</button>
+<div id="intro" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <button class="close" aria-label="Close">✕</button>
+    <h1 id="intro-title">chronocity</h1>
+    <p class="lede">Watch a git repo grow into a city. Every file is a building, every folder a district, and height is lines of code.
+      Press play and its whole history replays: the sky follows the hours its authors commit, fog marks quiet stretches, rain a burst of changes.</p>
+    <p class="now"></p>
+    <div class="projects"></div>
+    <h2>Render your own</h2>
+    <div class="drop">
+      <div>Drop a cloned repo folder anywhere, or <button class="pick">choose a folder…</button></div>
+      <div class="muted">It all runs in your browser. Nothing is uploaded.</div>
+      <input class="pickinput" type="file" webkitdirectory hidden>
+      <div class="status" aria-live="polite"></div>
+      <progress max="1" value="0" hidden></progress>
+    </div>
+    <form class="gh"><input type="text" placeholder="or paste github.com/owner/repo" aria-label="GitHub repo URL" spellcheck="false"><button>Get command</button></form>
+    <div class="clone" hidden><code></code><button type="button" class="copy">Copy</button>
+      <div class="muted">Browsers can't clone from GitHub directly. Run this, then drop the folder.</div></div>
+    <footer>
+      <button class="go">Explore the demo</button>
+      <span class="muted">made by <a href="https://github.com/dat999zx" target="_blank" rel="noopener">dat999zx</a> ·
+        <a href="https://github.com/dat999zx/chronocity" target="_blank" rel="noopener">source</a></span>
+    </footer>
+  </div>
 </div>
 <div id="clipping" hidden><div class="box"><div id="clipmsg">Rendering…</div><progress id="clipbar" max="1" value="0"></progress><button id="clipcancel">Cancel</button></div></div>
 <script type="module" src="./main.ts"></script>

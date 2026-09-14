@@ -8,6 +8,8 @@ import { createTicker } from './ticker.ts'
 import { createActivity } from './activity.ts'
 import type { Selection } from './selection.ts'
 import { canClip, renderClip, SHAPES, type Shape } from './clip.ts'
+import { createIntro, type GalleryEntry } from './intro.ts'
+import { loadLocal } from './local.ts'
 
 const D = 30, TAIL = 1.5 // playback seconds for the whole history, plus a hold at the end
 const $ = <T extends Element>(id: string) => document.getElementById(id) as Element as T
@@ -28,16 +30,24 @@ async function load<T>(url: string): Promise<T> {
   }
   return res.json()
 }
-const gallery = await load<{ name: string; repo: string }[]>('demos/index.json')
-const demo = gallery.find(d => d.name === q.get('repo')) ?? gallery[0] // only listed names ever reach a URL
-const model = await load<Demo>(`demos/${demo.name}.json`)
+const gallery = await load<GalleryEntry[]>('demos/index.json')
+const mine = await loadLocal().catch(() => null) // the last repo you dropped, kept in this browser only
+const localEntry: GalleryEntry | null = mine && { name: 'local', repo: mine.repo, about: 'your repo, replayed right here in your browser.' }
+const [demo, model]: [GalleryEntry, Demo] = q.get('repo') === 'local' && mine && localEntry
+  ? [localEntry, mine]
+  : await (async () => {
+    const d = gallery.find(g => g.name === q.get('repo')) ?? gallery[0] // only listed names ever reach a URL
+    return [d, await load<Demo>(`demos/${d.name}.json`)] as [GalleryEntry, Demo]
+  })()
 const format: number = model.v // widened, so the check below doesn't narrow `model` to never
 if (format !== 3) {
   hudEl.textContent = 'this demo was baked by an older chronocity; re-bake it'
   throw new Error(`demo format v${format}`)
 }
-for (const d of gallery) repoSel.append(new Option(d.name, d.name, false, d === demo))
-repoSel.onchange = () => { location.search = `?repo=${encodeURIComponent(repoSel.value)}` }
+const openRepo = (name: string) => { location.search = `?repo=${encodeURIComponent(name)}` }
+for (const d of [...gallery, ...(localEntry ? [localEntry] : [])])
+  repoSel.append(new Option(d.name === 'local' ? `your repo (${d.repo})` : d.name, d.name, false, d.name === demo.name))
+repoSel.onchange = () => openRepo(repoSel.value)
 
 const lay = layout(model.files.map(f => f[0]))
 const tl = timeline(model, D)
@@ -49,6 +59,14 @@ const panel = createPanel($<HTMLDivElement>('panel'), $<SVGSVGElement>('leader')
 const churn = codeChurn(model)
 const ticker = createTicker($<HTMLDivElement>('ticker'), model, tl, churn, local)
 const bars = createActivity($<HTMLCanvasElement>('activity'), churn, tl, D + TAIL)
+
+// The intro card: once per visit (per browser session), reopened with ⓘ. Clean stills (?ui=0) never show it.
+const intro = createIntro($<HTMLDivElement>('intro'), { gallery, current: demo, commits: totalCommits, local: localEntry, open: openRepo })
+$<HTMLButtonElement>('about').onclick = () => intro.show()
+if (q.get('ui') !== '0' && !sessionStorage.getItem('chronocity:intro-seen')) {
+  sessionStorage.setItem('chronocity:intro-seen', '1')
+  intro.show()
+}
 const clipBtn = $<HTMLButtonElement>('clip'), clipMenu = $<HTMLSpanElement>('clipmenu')
 const clipping = $<HTMLDivElement>('clipping'), clipMsg = $<HTMLDivElement>('clipmsg')
 const clipBar = $<HTMLProgressElement>('clipbar'), clipCancel = $<HTMLButtonElement>('clipcancel')
@@ -79,7 +97,8 @@ async function exportClip(shape: Shape) {
     if (blob) {
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `chronocity-${demo.name}-${shape === 'landscape' ? '16x9' : '9x16'}.mp4`
+      const slug = (model.repo.split('/').pop() || 'repo').replace(/[^\w.-]+/g, '-')
+      a.download = `chronocity-${slug}-${shape === 'landscape' ? '16x9' : '9x16'}.mp4`
       a.click()
       setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
     }
@@ -130,7 +149,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Space') togglePlay()
   else if (e.key === 'ArrowRight') stepBy(1)
   else if (e.key === 'ArrowLeft') stepBy(-1)
-  else if (e.key === 'Escape') busy ? busy.abort() : select(null)
+  else if (e.key === 'Escape') busy ? busy.abort() : intro.isOpen ? intro.hide() : select(null)
   else return
   e.preventDefault()
 })
