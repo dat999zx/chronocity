@@ -236,3 +236,9 @@ test('signals: a one-commit repo has no weather', () => {
   assert.equal(sg.rain(0), 0)
   assert.equal(sg.fog(0), 0)
 })
+
+test('layout: every district knows its folder path', () => {
+  const { districts } = layout(['a/b/c.ts', 'a/d.ts', 'e.ts'])
+  assert.deepEqual(districts.map(d => [d[4], d[5]]).sort(), [[0, ''], [1, 'a'], [2, 'a/b']])
+})
+

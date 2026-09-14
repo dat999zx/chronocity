@@ -2,7 +2,7 @@ export const STREET = 1.2 // street width around top-level districts; halves at 
 export const LOT = 1      // side of one file's lot, before streets (tuning knob)
 
 export type Rect = [x: number, z: number, w: number, d: number]
-export type District = [x: number, z: number, w: number, d: number, depth: number]
+export type District = [x: number, z: number, w: number, d: number, depth: number, path: string] // path '' = root
 export interface CityLayout {
   size: number               // the city spans [0, size] on x and z
   lots: Map<string, Rect>    // whole plot per file; the renderer insets the building
@@ -18,7 +18,7 @@ export function layout(paths: string[]): CityLayout {
   const root = buildTree(paths)
   const size = Math.sqrt(root.weight) * LOT * 1.35 // 1.35 leaves room for streets
   const lots = new Map<string, Rect>(), districts: District[] = []
-  place(root, { x: 0, z: 0, w: size, d: size }, 0, lots, districts)
+  place(root, { x: 0, z: 0, w: size, d: size }, 0, '', lots, districts)
   return { size, lots, districts }
 }
 
@@ -38,15 +38,15 @@ function buildTree(paths: string[]): Folder {
   return root
 }
 
-function place(node: Folder, r: Box, depth: number, lots: Map<string, Rect>, districts: District[]) {
-  districts.push([r.x, r.z, r.w, r.d, depth])
+function place(node: Folder, r: Box, depth: number, path: string, lots: Map<string, Rect>, districts: District[]) {
+  districts.push([r.x, r.z, r.w, r.d, depth, path])
   const pad = Math.min(STREET / 2 ** depth, 0.1 * Math.min(r.w, r.d))
   const inner = { x: r.x + pad, z: r.z + pad, w: r.w - 2 * pad, d: r.d - 2 * pad }
   const items: Item[] = [...node.dirs.values()].map((n): Item => ({ name: n.name, weight: n.weight, dir: n }))
     .concat(node.files.map(p => ({ name: p.slice(p.lastIndexOf('/') + 1), weight: 1, path: p })))
     .sort((a, b) => b.weight - a.weight || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) || +!!b.dir - +!!a.dir)
   for (const { it, x, z, w, d } of squarify(items, inner)) {
-    if (it.dir) place(it.dir, { x, z, w, d }, depth + 1, lots, districts)
+    if (it.dir) place(it.dir, { x, z, w, d }, depth + 1, path ? `${path}/${it.dir.name}` : it.dir.name, lots, districts)
     else lots.set(it.path!, [x, z, w, d])
   }
 }
